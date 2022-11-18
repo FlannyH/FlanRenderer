@@ -36,16 +36,16 @@ namespace Flan {
         constexpr auto get_cpu_start() const { return cpu_start; }
         constexpr auto get_gpu_start() const { return gpu_start; }
         constexpr auto get_heap() const { return heap; }
-        constexpr auto get_heap_size() const { return heap_size; }
+        constexpr auto get_heap_size() const { return capacity; }
 
     private:
         ID3D12DescriptorHeap* heap;
         D3D12_GPU_DESCRIPTOR_HANDLE gpu_start{};
         D3D12_CPU_DESCRIPTOR_HANDLE cpu_start{};
         const D3D12_DESCRIPTOR_HEAP_TYPE type;
-        u32 heap_size;
-        u32 descriptor_count;
-        u32 descriptor_size;
+        u32 capacity;//how many slots are there
+        u32 size;//how many slots are allocated
+        u32 descriptor_size;//how big is one descriptor
         std::unique_ptr<u32[]> free_slots;
         std::mutex mutex;
     };
