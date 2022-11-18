@@ -157,6 +157,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FlanTypes.h" />
+    <ClInclude Include="HelperFunctions.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Resources.h" />
   </ItemGroup>
