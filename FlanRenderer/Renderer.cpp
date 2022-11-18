@@ -1,9 +1,74 @@
 #include "Renderer.h"
 
+void throw_fatal(std::string_view message) {
+    std::cout << "[FATAL] ";
+    std::cout << message;
+    std::cout << std::endl;
+    exit(1);
+}
+
 void throw_if_failed(const HRESULT hr) {
     if (FAILED(hr)) {
         throw std::exception();
     }
+}
+
+Flan::D3D12_Command::D3D12_Command(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE type) {
+    // Create command queue description
+    D3D12_COMMAND_QUEUE_DESC queue_desc = {};
+    queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+    queue_desc.Type = type;
+
+    // Create command queue
+    throw_if_failed(device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&command_queue)));
+
+    // Create command allocators for each backbuffer
+    for (auto& frame : command_frames) {
+        throw_if_failed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&frame.command_allocator)));
+    }
+
+    // Create command list
+    throw_if_failed(device->CreateCommandList(0, type, command_frames[0].command_allocator.Get(), nullptr, IID_PPV_ARGS(&command_list)));
+    command_list->Close();
+
+    // Create a fence
+    throw_if_failed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
+
+    // Create fence event
+    fence_event = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+}
+
+Flan::D3D12_Command::~D3D12_Command()
+{
+    assert(!command_queue && !command_list && !fence);
+}
+
+void Flan::D3D12_Command::begin_frame() {
+    // The previous frame in this object might still be in progress, let's wait
+    command_frames[frame_index].wait_fence(fence_event, fence.Get());
+
+    // Reset command allocator
+    command_frames[frame_index].command_allocator->Reset();
+
+    // Reset command list
+    command_list->Reset(command_frames[frame_index].command_allocator.Get(), nullptr);
+}
+
+void Flan::D3D12_Command::end_frame() {
+    // Close the command list
+    command_list->Close();
+
+    // Execute command list
+    ID3D12CommandList* const command_lists[] {
+        command_list.Get(),
+    };
+    command_queue->ExecuteCommandLists(_countof(command_lists), &command_lists[0]);
+    ++fence_value;
+    command_frames[frame_index].fence_value = fence_value;
+    command_queue->Signal(fence.Get(), fence_value);
+
+    // Set frame index to the next buffer, wrapping around to 0 after the last buffer
+    frame_index = (frame_index + 1) % m_backbuffer_count;
 }
 
 void Flan::RendererDX12::create_hwnd(int width, int height, std::string_view name) {
@@ -14,24 +79,8 @@ void Flan::RendererDX12::create_hwnd(int width, int height, std::string_view nam
     m_hwnd = glfwGetWin32Window(window);
 }
 
-void Flan::RendererDX12::create_command_queue() {
-    // Create command queue
-    D3D12_COMMAND_QUEUE_DESC queue_desc = {};
-    queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-
-    throw_if_failed(device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&command_queue)));
-}
-
-void Flan::RendererDX12::create_command_allocator() {
-    // Create command allocator
-    ComPtr<ID3D12CommandAllocator> command_allocator;
-    throw_if_failed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                                   IID_PPV_ARGS(&command_allocator)));
-}
-
 void Flan::RendererDX12::create_fence() {
-    // Create fence
+    // Create fences for each backbuffer
     HANDLE fence_event = CreateEvent(nullptr, FALSE, FALSE, nullptr);
     ComPtr<ID3D12Fence> fences[m_backbuffer_count];
     UINT64 fence_values[m_backbuffer_count];
@@ -83,7 +132,7 @@ void Flan::RendererDX12::create_swapchain(int width, int height) {
     }
 
     if (!swapchain) {
-        throw std::exception();
+        throw_fatal("Failed to create Direct3D swapchain!");
     }
 
     frame_index = swapchain->GetCurrentBackBufferIndex();
@@ -94,9 +143,6 @@ bool Flan::RendererDX12::create_window(int width, int height, std::string_view n
     create_hwnd(width, height, name);
 
     // Create render context
-    create_command_queue();
-    create_command_allocator();
-    create_fence();
     create_swapchain(width, height);
     return true;
 }
@@ -117,7 +163,7 @@ void Flan::RendererDX12::create_factory() {
     debug_layer->Release();
 #endif
 
-    // This is for debugging purposes, so it may be unused
+    // Result is saved for debugging purposes, so it may be unused
     [[maybe_unused]] HRESULT result = CreateDXGIFactory2(dxgi_factory_flags, IID_PPV_ARGS(&m_factory));
 }
 
@@ -147,7 +193,7 @@ void Flan::RendererDX12::create_device() {
     }
 
     if (device == nullptr) {
-        throw std::exception("Failed to create DirectX 12 device!");
+        throw_fatal("Failed to create Direct3D device!");
     }
 
 #if _DEBUG
@@ -157,8 +203,55 @@ void Flan::RendererDX12::create_device() {
 #endif
 }
 
+void Flan::RendererDX12::create_command()
+{
+    command = D3D12_Command(device.Get(), D3D12_COMMAND_LIST_TYPE_DIRECT);
+    if (command.get_command_queue() == nullptr) {
+        throw_fatal("Failed to create command queue!");
+    }
+}
+
 bool Flan::RendererDX12::init() {
     create_factory();
     create_device();
+    create_command();
     return true;
+}
+
+void Flan::D3D12_Command::CommandFrame::wait_fence(HANDLE fence_event, ID3D12Fence1* fence) {
+    assert(fence && fence_event);
+
+    // If the current completed fence value is lower than this frame's fence value,
+    // we aren't done with this frame yet. We should wait.
+    if (fence->GetCompletedValue() < fence_value) {
+        // We create an event to trigger when the fence value reaches this frame's fence value
+        fence->SetEventOnCompletion(fence_value, fence_event);
+
+        // And then we wait for that event to trigger
+        WaitForSingleObject(fence_event, INFINITE);
+    }
+}
+
+void Flan::D3D12_Command::CommandFrame::release()
+{
+    command_allocator.ReleaseAndGetAddressOf();
+}
+
+void Flan::D3D12_Command::release()
+{
+    for (auto i = 0u; i < m_backbuffer_count; ++i) {
+        command_frames[i].wait_fence(fence_event, fence.Get());
+    }
+
+    if (fence_event) {
+        CloseHandle(fence_event);
+        fence_event = nullptr;
+    }
+
+    command_queue->Release();
+    command_list->Release();
+
+    for (auto i = 0u; i < m_backbuffer_count; ++i) {
+        command_frames[i].release();
+    }
 }
