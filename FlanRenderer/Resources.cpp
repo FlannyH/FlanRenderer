@@ -2,6 +2,7 @@
 #include "HelperFunctions.h"
 
 namespace Flan {
+
     bool DescriptorHeap::init(ID3D12Device* device, u32 new_size, bool is_shader_visible)
     {
         // Lock the mutex, we want only one thread to access this at at time
@@ -15,32 +16,42 @@ namespace Flan {
             is_shader_visible = false;
         }
 
-        release();
+        // Populate used slots array with -1 (available)
+        capacity = new_size;
+        size = 0;
+        slots_used.resize(capacity);
+        memset(slots_used.data(), -1, capacity);
 
         // Create descriptor heap
         D3D12_DESCRIPTOR_HEAP_DESC heap_desc{};
-        heap_desc.NumDescriptors = size;
+        heap_desc.NumDescriptors = new_size;
         heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         heap_desc.Flags = is_shader_visible ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         throw_if_failed(device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&heap)));
 
-        // Create free slots array
-        free_slots = std::move(std::make_unique<u32[]>(new_size));
-        capacity = new_size;
-        size = 0;
-        for (u32 i = 0; i < size; ++i) {
-            free_slots[i] = i;
-        }
-
+        // Get the memory locations on CPU (and GPU, if it's shader visible)
         descriptor_size = device->GetDescriptorHandleIncrementSize(type);
         cpu_start = heap->GetCPUDescriptorHandleForHeapStart();
         gpu_start = is_shader_visible ? heap->GetGPUDescriptorHandleForHeapStart() : D3D12_GPU_DESCRIPTOR_HANDLE{ 0 };
 
+        shader_visible = is_shader_visible;
+
         return true;
     }
 
-    void DescriptorHeap::release()
+    void DescriptorHeap::do_deferred_releases(u32 frame_index)
     {
+        // Make this thread safe
+        std::lock_guard lock{ deferred_release_mutex };
+
+        // Release resources
+        for (auto& index : slots_to_be_freed[frame_index]) {
+
+            slots_used[index] = -1;
+        }
+
+        // Clear the array
+        slots_to_be_freed[frame_index].clear();
     }
 
     DescriptorHandle DescriptorHeap::allocate()
@@ -53,16 +64,32 @@ namespace Flan {
         assert(size < capacity);
 
         // Find the next offset so we can allocate that slot
-        const u32 index{ free_handles[size] };
-        const u32 offset{ index * descriptor_size };
+        // TODO: look into if this can be optimized by just using an index that increases and wraps around the capacity
+        u32 found_slot = UINT32_MAX;
+        for (u32 index = 0; index < capacity; index++) {
+            // If we find an available spot, break and use that one
+            if (slots_used[index] == -1) {
+                found_slot = index;
+                break;
+            }
+        }
+        
+        // Allocate the slot
+        assert(found_slot != UINT32_MAX);
+        slots_used[found_slot] = size;
+
+        // Get the offset
+        const u32 offset{ found_slot * descriptor_size };
         ++size;
 
         // Create the descriptor handle object
         DescriptorHandle handle;
         handle.cpu.ptr = cpu_start.ptr + offset;
-        if (is_shader_visible()) {
+        if (shader_visible) {
             handle.gpu.ptr = gpu_start.ptr + offset;
         }
+
+        return handle;
     }
 
     void DescriptorHeap::free(DescriptorHandle& handle)
@@ -82,6 +109,28 @@ namespace Flan {
         const u32 index = (u32)(handle.cpu.ptr - cpu_start.ptr) / descriptor_size; // Calculate the index
         assert(handle.index == index); // Make sure it matches
 
+        // Defer the deallocations to the next time this heap is used
+        slots_to_be_freed->push_back(index);
+
         handle = {};
+    }
+    ResourceManager::ResourceManager()
+    {
+    }
+    ResourceManager::~ResourceManager()
+    {
+    }
+    ResourceHandle ResourceManager::load_mesh(const std::string& path)
+    {
+        // Generate a hash for the resource
+        ResourceHandle handle = std::hash<std::string>{}(path);
+
+        // TODO: load mesh from gltf
+
+        // 
+
+
+
+        return ResourceHandle();
     }
 }

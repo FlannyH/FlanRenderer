@@ -9,7 +9,7 @@
 #include <glfw/glfw3.h>
 #include <glfw/glfw3native.h>
 #include <vector>
-#include "glm/vec3.hpp"
+#include "glm/glm.hpp"
 #include <fstream>
 #include <chrono>
 #include <wrl.h>
@@ -28,8 +28,8 @@ namespace Flan {
         void begin_frame();
         void end_frame();
         void release();
-        constexpr auto const get_command_queue() const { return command_queue.Get(); }
-        constexpr auto const get_command_list() const { return command_list.Get(); }
+        const auto const get_command_queue() const { return command_queue.Get(); }
+        const auto const get_command_list() const { return command_list.Get(); }
         constexpr auto const get_frame_index() const { return frame_index; }
     private:
         struct CommandFrame {

@@ -151,13 +151,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="DynamicAllocator.cpp" />
     <ClCompile Include="FlanRenderer.cpp" />
+    <ClCompile Include="MaterialResource.cpp" />
+    <ClCompile Include="MeshResource.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="Resources.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="DynamicAllocator.h" />
     <ClInclude Include="FlanTypes.h" />
     <ClInclude Include="HelperFunctions.h" />
+    <ClInclude Include="MaterialResource.h" />
+    <ClInclude Include="MeshResource.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Resources.h" />
   </ItemGroup>
