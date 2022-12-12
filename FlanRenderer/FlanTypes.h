@@ -1,12 +1,19 @@
 #pragma once
-#include <stdint.h>
-#define u8 uint8_t
-#define u16 uint16_t
-#define u32 uint32_t
-#define u64 uint64_t
-#define i8 int8_t
-#define i16 int16_t
-#define i32 int32_t
-#define i64 int64_t
-#define f32 float
-//#define f64 double
+
+#define KB * 1024
+#define MB * 1024 KB
+#define GB * 1024 MB
+
+namespace Flan {
+    typedef unsigned char           u8;
+    typedef unsigned short          u16;
+    typedef unsigned long           u32;
+    typedef unsigned long long      u64;
+    typedef signed char             i8;
+    typedef signed short            i16;
+    typedef signed long             i32;
+    typedef signed long long        i64;
+    typedef float                   f32;
+    typedef double                  f64;
+
+}

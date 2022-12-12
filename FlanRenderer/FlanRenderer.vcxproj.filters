@@ -24,7 +24,7 @@
     <ClCompile Include="Resources.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="MeshResource.cpp">
+    <ClCompile Include="ModelResource.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="MaterialResource.cpp">
@@ -38,22 +38,22 @@
     <ClInclude Include="Renderer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="FlanTypes.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Resources.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="HelperFunctions.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="MeshResource.h">
+    <ClInclude Include="ModelResource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="MaterialResource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="DynamicAllocator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="FlanTypes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

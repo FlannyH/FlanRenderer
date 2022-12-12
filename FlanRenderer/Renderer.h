@@ -14,7 +14,6 @@
 #include <chrono>
 #include <wrl.h>
 #include <string_view>
-
 #include "FlanTypes.h"
 
 namespace Flan {
@@ -23,13 +22,14 @@ namespace Flan {
 
     class D3D12_Command {
     public:
+        D3D12_Command() {}
         D3D12_Command(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE type);
         ~D3D12_Command();
         void begin_frame();
         void end_frame();
         void release();
-        const auto const get_command_queue() const { return command_queue.Get(); }
-        const auto const get_command_list() const { return command_list.Get(); }
+        const auto get_command_queue() const { return command_queue.Get(); }
+        const auto get_command_list() const { return command_list.Get(); }
         constexpr auto const get_frame_index() const { return frame_index; }
     private:
         struct CommandFrame {
@@ -44,8 +44,9 @@ namespace Flan {
         ComPtr<ID3D12GraphicsCommandList> command_list;
         ComPtr<ID3D12Fence1> fence;
         uint64_t fence_value = 0;
-        HANDLE fence_event;
-        u32 frame_index;
+        HANDLE fence_event = nullptr;
+        u32 frame_index = 0;
+        bool initialized = false;
     };
 
     class RendererHigh
@@ -59,8 +60,12 @@ namespace Flan {
     };
     class RendererDX12 : public RendererHigh {
     public:
+        RendererDX12() {
+            init();
+        }
         bool create_window(int width, int height, std::string_view name) override;
         bool init() override;
+        ID3D12Device* get_device() const { return device.Get(); }
     private:
         void create_hwnd(int width, int height, std::string_view name);
         void create_fence();

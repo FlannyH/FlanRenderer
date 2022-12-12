@@ -28,10 +28,14 @@ Flan::D3D12_Command::D3D12_Command(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE
 
 Flan::D3D12_Command::~D3D12_Command()
 {
-    assert(!command_queue && !command_list && !fence);
+    if (initialized)
+        assert(!command_queue && !command_list && !fence);
 }
 
 void Flan::D3D12_Command::begin_frame() {
+    // Make sure we are initialized
+    assert(initialized);
+
     // The previous frame in this object might still be in progress, let's wait
     command_frames[frame_index].wait_fence(fence_event, fence.Get());
 
@@ -79,6 +83,7 @@ void Flan::RendererDX12::create_fence() {
 }
 
 void Flan::RendererDX12::create_swapchain(int width, int height) {
+    /*
     // Declare variables we need for swapchain
     ComPtr<ID3D12DescriptorHeap> render_target_view_heap;
     ComPtr<IDXGISwapChain3> swapchain = nullptr;
@@ -113,7 +118,7 @@ void Flan::RendererDX12::create_swapchain(int width, int height) {
 
     // Create swapchain
     IDXGISwapChain1* new_swapchain;
-    m_factory->CreateSwapChainForHwnd(command_queue.Get(), m_hwnd, &swapchain_desc, nullptr, nullptr, &new_swapchain);
+    //m_factory->CreateSwapChainForHwnd(command_queue.Get(), m_hwnd, &swapchain_desc, nullptr, nullptr, &new_swapchain);
     HRESULT swapchain_support = new_swapchain->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void**>(&new_swapchain));
     if (SUCCEEDED(swapchain_support)) {
         swapchain = static_cast<IDXGISwapChain3*>(new_swapchain);
@@ -124,6 +129,7 @@ void Flan::RendererDX12::create_swapchain(int width, int height) {
     }
 
     frame_index = swapchain->GetCurrentBackBufferIndex();
+    */
 }
 
 bool Flan::RendererDX12::create_window(int width, int height, std::string_view name) {
@@ -142,7 +148,7 @@ void Flan::RendererDX12::create_factory() {
 #if _DEBUG
     // If we're in debug mode, create a debug layer for proper error tracking
     // Note: Errors will be printed in the Visual Studio output tab, and not in the console!
-    ComPtr<ID3D12Debug> debug_layer;
+    ID3D12Debug* debug_layer;
     throw_if_failed(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_layer)));
     throw_if_failed(debug_layer->QueryInterface(IID_PPV_ARGS(&m_debug_interface)));
     m_debug_interface->EnableDebugLayer();

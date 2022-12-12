@@ -1,4 +1,8 @@
-#include "MeshResource.h"
+#include "ModelResource.h"
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STBI_MSC_SECURE_CRT
 #include <tinygltf/tiny_gltf.h>
 
 namespace Flan {
@@ -73,7 +77,7 @@ namespace Flan {
         //Populate resource
         {
             ResourceManager::get_allocator_instance()->curr_memory_chunk_label = "MdlRes - Mesh - " + path;
-            meshes = (MeshCPU*)dynamic_allocate(sizeof(MeshBufferData) * primitives.size());
+            meshes_cpu = (MeshCPU*)dynamic_allocate(sizeof(MeshCPU) * primitives.size());
             ResourceManager::get_allocator_instance()->curr_memory_chunk_label = "MdlRes - Material - " + path;
             materials = (MaterialResource*)dynamic_allocate(sizeof(MaterialResource) * primitives.size());
             n_meshes = 0;
@@ -82,7 +86,7 @@ namespace Flan {
             int i = 0;
             for (auto& [material_id, mesh] : primitives)
             {
-                meshes[n_meshes] = mesh;
+                meshes_cpu[n_meshes] = mesh;
                 materials[n_materials] = materials[material_id];
                 n_meshes += 1;
                 n_materials += 1;
@@ -226,8 +230,11 @@ namespace Flan {
         {
             ResourceManager::get_allocator_instance()->curr_memory_chunk_label = "mesh loading - vertex buffers";
             mesh_out.vertices = static_cast<Vertex*>(dynamic_allocate(sizeof(Vertex) * indices.size()));
+            ResourceManager::get_allocator_instance()->curr_memory_chunk_label = "mesh loading - index buffers";
+            mesh_out.indices = static_cast<u32*>(dynamic_allocate(sizeof(u32) * indices.size()));
             ResourceManager::get_allocator_instance()->curr_memory_chunk_label = "unknown";
             mesh_out.n_verts = 0;
+            mesh_out.n_indices = 0;
             int i = 0;
             for (int index : indices)
             {
@@ -237,8 +244,10 @@ namespace Flan {
                 if (tangent_pointer != nullptr) { vertex.tangent = glm::mat3(trans_mat) * tangent_pointer[index]; }
                 if (colour_pointer != nullptr) { vertex.colour = colour_pointer[index]; }
                 if (texcoord_pointer != nullptr) { vertex.texcoord0 = texcoord_pointer[index]; }
-                mesh_out.vertices[mesh_out.n_verts++] = vertex;
+                mesh_out.vertices[mesh_out.n_verts] = vertex;
                 mesh_out.indices[i] = i;
+                mesh_out.n_verts++;
+                mesh_out.n_indices++;
                 i++;
             }
         }

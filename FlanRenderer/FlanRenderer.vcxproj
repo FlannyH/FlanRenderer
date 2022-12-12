@@ -154,7 +154,7 @@
     <ClCompile Include="DynamicAllocator.cpp" />
     <ClCompile Include="FlanRenderer.cpp" />
     <ClCompile Include="MaterialResource.cpp" />
-    <ClCompile Include="MeshResource.cpp" />
+    <ClCompile Include="ModelResource.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="Resources.cpp" />
   </ItemGroup>
@@ -163,7 +163,7 @@
     <ClInclude Include="FlanTypes.h" />
     <ClInclude Include="HelperFunctions.h" />
     <ClInclude Include="MaterialResource.h" />
-    <ClInclude Include="MeshResource.h" />
+    <ClInclude Include="ModelResource.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Resources.h" />
   </ItemGroup>
