@@ -126,6 +126,7 @@ namespace Flan {
         virtual void begin_frame() {}
         virtual void end_frame() {}
         virtual void draw_model(ModelDrawInfo model) {}
+        virtual bool should_close() { return false; }
 
     protected:
         GLFWwindow* window;
@@ -143,6 +144,7 @@ namespace Flan {
         void begin_frame() override;
         void end_frame() override;
         void draw_model(ModelDrawInfo model) override;
+        bool should_close() override;
         ID3D12Device* get_device() const { return device.Get(); }
     private:
         void create_hwnd(int width, int height, std::string_view name);
@@ -163,6 +165,7 @@ namespace Flan {
         ComPtr<ID3D12PipelineState> pso = nullptr;
         ComPtr<ID3D12RootSignature> root_signature = nullptr;
         DynamicAllocator renderer_allocator = DynamicAllocator(8 MB);
+        ID3D12PipelineState* pipeline_state_object;
 
         // Draw queues
         ModelDrawInfo* model_queue = nullptr;

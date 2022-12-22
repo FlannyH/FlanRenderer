@@ -175,6 +175,7 @@
     <ClInclude Include="CommonDefines.h" />
     <ClInclude Include="Descriptor.h" />
     <ClInclude Include="DynamicAllocator.h" />
+    <ClInclude Include="FlanRenderer.h" />
     <ClInclude Include="FlanTypes.h" />
     <ClInclude Include="HelperFunctions.h" />
     <ClInclude Include="MaterialResource.h" />

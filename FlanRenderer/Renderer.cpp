@@ -241,7 +241,6 @@ namespace Flan {
         Shader shader = load_shader(shader_description.binary_path);
 
         // Create pipeline state description
-        ID3D12PipelineState* pipeline_state_object;
         D3D12_GRAPHICS_PIPELINE_STATE_DESC pipeline_state_description{};
         pipeline_state_description.InputLayout = { input_element_descs, (u32)shader_description.parameters.size() };
         pipeline_state_description.pRootSignature = root_signature.Get();
@@ -488,8 +487,11 @@ namespace Flan {
 
         // Set root descriptor table
         command_list->SetGraphicsRootDescriptorTable(0, cbv_srv_uav_heap.get_gpu_start());
+
         // Set render target
         command_list->OMSetRenderTargets(1, &rtv_handles[frame_index].cpu, FALSE, nullptr);
+
+        command_list->SetPipelineState(pipeline_state_object);
     }
 
     void RendererDX12::end_frame()
@@ -505,25 +507,24 @@ namespace Flan {
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // We draw triangles
 
         // Loop over each model
-        while (model_queue && model_queue_length > 0) {
-            for (size_t i = 0; i < model_queue_length; ++i) {
-                // Get the model draw info for this entry
-                ModelDrawInfo& curr_model_info = model_queue[i];
+        for (size_t i = 0; i < model_queue_length; ++i) {
+            // Get the model draw info for this entry
+            ModelDrawInfo& curr_model_info = model_queue[i];
 
-                // Get the mesh from the resource manager
-                ModelResource* model_resource = m_resource_manager->get_resource<ModelResource>(curr_model_info.model_to_draw);
-                auto vertex_buffer_view = model_resource->meshes_gpu->vertex_buffer_view;
-                auto index_buffer_view = model_resource->meshes_gpu->index_buffer_view;
-                auto n_triangles = model_resource->meshes_cpu->n_indices;
+            // Get the mesh from the resource manager
+            ModelResource* model_resource = m_resource_manager->get_resource<ModelResource>(curr_model_info.model_to_draw);
+            auto vertex_buffer_view = model_resource->meshes_gpu->vertex_buffer_view;
+            auto index_buffer_view = model_resource->meshes_gpu->index_buffer_view;
+            auto n_triangles = model_resource->meshes_cpu->n_indices;
 
-                // Bind the vertex buffer
-                command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view); // Bind vertex buffer
-                command_list->IASetIndexBuffer(&index_buffer_view); // Bind index buffer
+            // Bind the vertex buffer
+            command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view); // Bind vertex buffer
+            command_list->IASetIndexBuffer(&index_buffer_view); // Bind index buffer
 
-                // Submit draw call
-                command_list->DrawIndexedInstanced(n_triangles, 1, 0, 0, 0);
-            }
+            // Submit draw call
+            command_list->DrawIndexedInstanced(n_triangles, 1, 0, 0, 0);
         }
+        model_queue_length = 0;
         command.end_frame();
 
         // Update window
@@ -536,9 +537,18 @@ namespace Flan {
 
     void RendererDX12::draw_model(ModelDrawInfo model)
     {
+        // Make sure we have a queue
         if (model_queue == nullptr) {
             model_queue = (ModelDrawInfo*)renderer_allocator.allocate(sizeof(ModelDrawInfo) * 1024);
         }
+
+        // Add the model to the queue
+        model_queue[model_queue_length++] = model;
+    }
+
+    bool RendererDX12::should_close()
+    {
+        return glfwWindowShouldClose(window) != 0;
     }
 
     void Flan::D3D12_Command::CommandFrame::wait_fence(HANDLE fence_event, ID3D12Fence1* fence) {

@@ -2,6 +2,7 @@
 
 #include "Renderer.h"
 #include "Resources.h"
+#include "FlanRenderer.h"
 
 int main()
 {
@@ -26,7 +27,7 @@ int main()
     };
 
     // Main loop
-    while (true) {
+    while (!renderer.should_close()) {
         printf("frame\n");
         renderer.begin_frame();
         renderer.draw_model({ quad_handle, quad_transform });
