@@ -128,6 +128,7 @@ namespace Flan {
         virtual void draw_model(ModelDrawInfo model) {}
 
     protected:
+        GLFWwindow* window;
         HWND m_hwnd;
         ResourceManager* m_resource_manager;
     };

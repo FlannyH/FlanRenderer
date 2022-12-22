@@ -4,7 +4,7 @@
 namespace Flan {
     bool DescriptorHeap::init(ID3D12Device* device, u32 new_size, bool is_shader_visible)
     {
-
+        printf("initializing a descriptor heap of type %i\n", type);
         // We need a valid device
         assert(device);
 

@@ -71,7 +71,7 @@ namespace Flan {
         // Create window - use GLFW_NO_API, since we're not using OpenGL
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        GLFWwindow* window = glfwCreateWindow(width, height, name.data(), nullptr, nullptr);
+        window = glfwCreateWindow(width, height, name.data(), nullptr, nullptr);
         m_hwnd = glfwGetWin32Window(window);
     }
 
@@ -323,8 +323,6 @@ namespace Flan {
 
         // todo: make this more flexible and less magic number-y
 
-        create_descriptor_heaps();
-
         // Create descriptor ranges
         D3D12_DESCRIPTOR_RANGE1 ranges[3];
         ranges[0].BaseShaderRegister = 0;
@@ -486,11 +484,10 @@ namespace Flan {
         // Bind descriptor heap
         ID3D12DescriptorHeap* descriptor_heaps[] = { cbv_srv_uav_heap.get_heap()};
         command_list->SetDescriptorHeaps(_countof(descriptor_heaps), descriptor_heaps);
-        DescriptorHandle const_buffer_view_handle = cbv_srv_uav_heap.allocate();
+        //DescriptorHandle const_buffer_view_handle = cbv_srv_uav_heap.get_cpu_start();
 
         // Set root descriptor table
-        command_list->SetGraphicsRootDescriptorTable(0, const_buffer_view_handle.gpu);
-
+        command_list->SetGraphicsRootDescriptorTable(0, cbv_srv_uav_heap.get_gpu_start());
         // Set render target
         command_list->OMSetRenderTargets(1, &rtv_handles[frame_index].cpu, FALSE, nullptr);
     }
@@ -528,6 +525,13 @@ namespace Flan {
             }
         }
         command.end_frame();
+
+        // Update window
+        swapchain->Present(1, 0);
+
+        // Update GLFW window
+        glfwPollEvents();
+        glfwSwapBuffers(window);
     }
 
     void RendererDX12::draw_model(ModelDrawInfo model)

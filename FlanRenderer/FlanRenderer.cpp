@@ -27,6 +27,7 @@ int main()
 
     // Main loop
     while (true) {
+        printf("frame\n");
         renderer.begin_frame();
         renderer.draw_model({ quad_handle, quad_transform });
         renderer.end_frame();
