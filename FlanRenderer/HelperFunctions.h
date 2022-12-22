@@ -1,6 +1,9 @@
 #pragma once
+#include <string>
+#include <cstdio>
+#include <iostream>
 
-static void throw_fatal(std::string_view message) {
+static void throw_fatal(std::string message) {
     std::cout << "[FATAL] ";
     std::cout << message;
     std::cout << std::endl;
@@ -12,3 +15,4 @@ static void throw_if_failed(const HRESULT hr) {
         throw std::exception();
     }
 }
+

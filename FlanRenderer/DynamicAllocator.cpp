@@ -48,6 +48,11 @@ namespace Flan {
         static_cast<MemoryManagerHeader*>(block_start)->set_allocated(false);
     }
 
+    void* DynamicAllocator::allocate(size_t size, size_t align)
+    {
+        return allocate(static_cast<u32>(size), static_cast<u32>(align));
+    }
+
     void* DynamicAllocator::allocate(u32 size, u32 align)
     {
 #ifdef NORMAL_ALLOC

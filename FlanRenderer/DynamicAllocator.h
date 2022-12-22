@@ -27,6 +27,7 @@ namespace Flan {
     public:
         DynamicAllocator(const u32 size) { init(size); }
         void init(u32 size);
+        void* allocate(size_t size, size_t align = 8);
         void* allocate(u32 size, u32 align = 8);
         void release(void* pointer);
         void* reallocate(void* pointer, u32 size, u32 align = 8);
