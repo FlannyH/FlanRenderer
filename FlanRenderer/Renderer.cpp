@@ -40,14 +40,17 @@ namespace Flan {
         // Make sure we are initialized
         assert(initialized);
 
-        // The previous frame in this object might still be in progress, let's wait
-        command_frames[frame_index].wait_fence(fence_event, fence.Get());
-
         // Reset command allocator
         command_frames[frame_index].command_allocator->Reset();
 
         // Reset command list
         command_list->Reset(command_frames[frame_index].command_allocator.Get(), nullptr);
+
+        // Reset the fence event
+        ResetEvent(fence_event);
+
+        // todo: write comment and make sense of this, also check if it works without it
+        command_queue->Signal(fence.Get(), fence_value);
     }
 
     void Flan::D3D12_Command::end_frame() {
@@ -64,6 +67,7 @@ namespace Flan {
         command_queue->Signal(fence.Get(), fence_value);
 
         // Set frame index to the next buffer, wrapping around to 0 after the last buffer
+        command_frames[frame_index].wait_fence(fence_event, fence.Get());
         frame_index = (frame_index + 1) % m_backbuffer_count;
     }
 
@@ -311,7 +315,7 @@ namespace Flan {
         cbv_srv_uav_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         sample_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
         rtv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-        cbv_srv_uav_heap.init(device.Get(), 3, true);
+        cbv_srv_uav_heap.init(device.Get(), 16, true);
         sample_heap.init(device.Get(), 1, true);
         rtv_heap.init(device.Get(), m_backbuffer_count, true);
     }
@@ -322,28 +326,31 @@ namespace Flan {
 
         // todo: make this more flexible and less magic number-y
 
+        //// Create descriptor ranges
+        //D3D12_DESCRIPTOR_RANGE1 ranges[3];
+        //ranges[0].BaseShaderRegister = 0;
+        //ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        //ranges[0].NumDescriptors = 2;
+        //ranges[0].RegisterSpace = 0;
+        //ranges[0].OffsetInDescriptorsFromTableStart = 0;
+        //ranges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
+        //
+        //ranges[1].BaseShaderRegister = 2;
+        //ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        //ranges[1].NumDescriptors = 1;
+        //ranges[1].RegisterSpace = 0;
+        //ranges[1].OffsetInDescriptorsFromTableStart = 2;
+        //ranges[1].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
+        //
+        //ranges[2].BaseShaderRegister = 3;
+        //ranges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        //ranges[2].NumDescriptors = 1;
+        //ranges[2].RegisterSpace = 0;
+        //ranges[2].OffsetInDescriptorsFromTableStart = 3;
+        //ranges[2].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
+
         // Create descriptor ranges
-        D3D12_DESCRIPTOR_RANGE1 ranges[3];
-        ranges[0].BaseShaderRegister = 0;
-        ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        ranges[0].NumDescriptors = 1;
-        ranges[0].RegisterSpace = 0;
-        ranges[0].OffsetInDescriptorsFromTableStart = 0;
-        ranges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
-
-        ranges[1].BaseShaderRegister = 0;
-        ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        ranges[1].NumDescriptors = 1;
-        ranges[1].RegisterSpace = 0;
-        ranges[1].OffsetInDescriptorsFromTableStart = 1;
-        ranges[1].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
-
-        ranges[2].BaseShaderRegister = 0;
-        ranges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        ranges[2].NumDescriptors = 1;
-        ranges[2].RegisterSpace = 0;
-        ranges[2].OffsetInDescriptorsFromTableStart = 2;
-        ranges[2].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
+        D3D12_DESCRIPTOR_RANGE1 ranges[3] = { cbv_srv_uav_range, sampler_range, rtv_range };
 
         // Bind the descriptor ranges to the descriptor table of the root signature
         D3D12_ROOT_PARAMETER1 root_parameters[1];
@@ -383,15 +390,28 @@ namespace Flan {
         }
     }
 
-    void Flan::RendererDX12::create_const_buffer()
+    ConstBuffer Flan::RendererDX12::create_const_buffer(size_t buffer_size, bool temporary)
     {
         assert(device);
 
+        // Create the const buffer
+        ConstBuffer const_buffer{};
+
         // Allocate memory for the buffer in CPU space
-        TransformBuffer* const_buffer_data = (TransformBuffer*)renderer_allocator.allocate(sizeof(TransformBuffer));
+        const_buffer.buffer_data = renderer_allocator.allocate(buffer_size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+        const_buffer.buffer_size = buffer_size;
 
         // Get a handle where we can put the constant buffer
-        DescriptorHandle const_buffer_handle = cbv_srv_uav_heap.allocate();
+        const_buffer.handle = cbv_srv_uav_heap.allocate();
+#ifdef _DEBUG
+        printf("const_buffer.handle.index = %i\n", const_buffer.handle.index);
+        printf("const_buffer.buffer_data = %p (%i bytes)\n", const_buffer.buffer_data, const_buffer.buffer_size);
+#endif
+
+        // If this buffer is temporary, mark it for deallocation, which will free the buffer handle a few frames from now
+        if (temporary) {
+            //cbv_srv_uav_heap.free(const_buffer.handle);
+        }
 
         // Define upload properties
         D3D12_HEAP_PROPERTIES upload_heap_props = {
@@ -404,7 +424,7 @@ namespace Flan {
         D3D12_RESOURCE_DESC upload_buffer_desc = {
             D3D12_RESOURCE_DIMENSION_BUFFER, // Can either be texture or buffer, we want a buffer
             0,
-            (sizeof(const_buffer_data) | 0xFF) + 1, // Constant buffers must be 256-byte aligned
+            (const_buffer.buffer_size | 0xFF) + 1, // Constant buffers must be 256-byte aligned
             1,
             1,
             1,
@@ -427,16 +447,19 @@ namespace Flan {
         ));
 
         // Create a constant buffer description
-        D3D12_CONSTANT_BUFFER_VIEW_DESC const_buffer_view_desc{};
-        const_buffer_view_desc.BufferLocation = const_buffer_resource->GetGPUVirtualAddress();
-        const_buffer_view_desc.SizeInBytes = (sizeof(const_buffer_data) | 0xFF) + 1;
+        //D3D12_CONSTANT_BUFFER_VIEW_DESC const_buffer_view_desc{};
+        const_buffer.view_desc = D3D12_CONSTANT_BUFFER_VIEW_DESC{};
+        const_buffer.view_desc.BufferLocation = const_buffer_resource->GetGPUVirtualAddress();
+        const_buffer.view_desc.SizeInBytes = (const_buffer.buffer_size | 0xFF) + 1;
 
         // Copy the data over
         D3D12_RANGE const_range{ 0, 0 };
         uint8_t* const_data_begin = nullptr;
         throw_if_failed(const_buffer_resource->Map(0, &const_range, reinterpret_cast<void**>(&const_data_begin)));
-        memcpy_s(const_data_begin, sizeof(const_buffer_data), &const_buffer_data, sizeof(const_buffer_data));
+        memcpy_s(const_data_begin, const_buffer.buffer_size, &const_buffer.buffer_data, const_buffer.buffer_size);
         const_buffer_resource->Unmap(0, nullptr);
+
+        return const_buffer;
     }
 
     Shader Flan::RendererDX12::load_shader(const std::string& path)
@@ -466,7 +489,7 @@ namespace Flan {
         if (!create_window(w, h, "FlanRenderer (DirectX 12)")) {
             throw std::exception("Could not create window!");
         }
-        create_const_buffer();
+        camera_transform = create_const_buffer(sizeof(TransformBuffer));
         return true;
     }
 
@@ -511,6 +534,15 @@ namespace Flan {
             // Get the model draw info for this entry
             ModelDrawInfo& curr_model_info = model_queue[i];
 
+            // Create a model matrix for this model
+            glm::mat4 model_matrix = glm::mat4(1.0f);
+            model_matrix = glm::translate(model_matrix, curr_model_info.transform.position);
+            model_matrix = model_matrix * glm::mat4_cast(curr_model_info.transform.rotation);
+            model_matrix = glm::scale(model_matrix, curr_model_info.transform.scale);
+
+            // Create a constant buffer for the model transform
+            //auto model_transform_const_buffer = create_const_buffer(sizeof(ModelTransformBuffer), true);
+
             // Get the mesh from the resource manager
             ModelResource* model_resource = m_resource_manager->get_resource<ModelResource>(curr_model_info.model_to_draw);
             auto vertex_buffer_view = model_resource->meshes_gpu->vertex_buffer_view;
@@ -521,6 +553,10 @@ namespace Flan {
             command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view); // Bind vertex buffer
             command_list->IASetIndexBuffer(&index_buffer_view); // Bind index buffer
 
+            // Bind the command buffer
+            //command_list->SetGraphicsRootDescriptorTable(0, camera_transform.handle.gpu);
+            //command_list->SetGraphicsRootDescriptorTable(1, model_transform_const_buffer.handle.gpu);
+
             // Submit draw call
             command_list->DrawIndexedInstanced(n_verts, 1, 0, 0, 0);
         }
@@ -529,6 +565,7 @@ namespace Flan {
 
         // Update window
         swapchain->Present(1, 0);
+        frame_index = swapchain->GetCurrentBackBufferIndex();
 
         // Update GLFW window
         glfwPollEvents();
@@ -556,13 +593,16 @@ namespace Flan {
 
         // If the current completed fence value is lower than this frame's fence value,
         // we aren't done with this frame yet. We should wait.
-        if (fence->GetCompletedValue() < fence_value) {
+
+        printf("%llu / %llu\n", fence->GetCompletedValue(), fence_value);
+
+        //if (fence->GetCompletedValue() < fence_value) {
             // We create an event to trigger when the fence value reaches this frame's fence value
             fence->SetEventOnCompletion(fence_value, fence_event);
 
             // And then we wait for that event to trigger
             WaitForSingleObject(fence_event, INFINITE);
-        }
+        //}
     }
 
     void Flan::D3D12_Command::CommandFrame::release()

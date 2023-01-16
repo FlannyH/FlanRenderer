@@ -21,7 +21,7 @@ int main()
 
     // Define where the quad should be
     Flan::Transform quad_transform {
-        {0, 0, 0},
+        {0, 0, 100},
         {1, 0, 0, 0},
         {1, 1, 1},
     };

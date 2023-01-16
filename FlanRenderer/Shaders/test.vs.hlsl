@@ -1,7 +1,14 @@
-cbuffer cb : register(b0)
+cbuffer camera_transform : register(b0)
 {
-    float3 color : packoffset(c0);
+    matrix view;
+    matrix projection;
 };
+
+cbuffer camera_transform : register(b1)
+{
+    matrix model;
+};
+
 
 struct VertexInput
 {

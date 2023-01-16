@@ -43,6 +43,7 @@ namespace Flan {
         for (auto& index : slots_to_be_freed[frame_index]) {
 
             slots_used[index] = -1;
+            printf("released slot %i from the descriptor heap\n", index);
         }
 
         // Clear the array
@@ -80,6 +81,10 @@ namespace Flan {
         if (shader_visible) {
             handle.gpu.ptr = gpu_start.ptr + offset;
         }
+#ifdef _DEBUG
+        handle.owner = this;
+        handle.index = found_slot;
+#endif
 
         return handle;
     }

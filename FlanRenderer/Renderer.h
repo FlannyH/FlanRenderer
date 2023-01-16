@@ -98,8 +98,12 @@ namespace Flan {
     };
 
     struct TransformBuffer {
-        glm::mat4 model_view_matrix;
+        glm::mat4 view_matrix;
         glm::mat4 projection_matrix;
+    };
+
+    struct ModelTransformBuffer {
+        glm::mat4 model_matrix;
     };
 
     struct Shader {
@@ -116,6 +120,13 @@ namespace Flan {
     struct ModelDrawInfo {
         ResourceHandle model_to_draw;
         Transform transform;
+    };
+
+    struct ConstBuffer {
+        void* buffer_data;
+        size_t buffer_size;
+        DescriptorHandle handle;
+        D3D12_CONSTANT_BUFFER_VIEW_DESC view_desc;
     };
 
     class RendererHigh
@@ -156,7 +167,7 @@ namespace Flan {
         void create_pipeline_state_object();
         void create_descriptor_heaps();
         void create_root_signature();
-        void create_const_buffer();
+        [[nodiscard]] ConstBuffer create_const_buffer(size_t buffer_size, bool temporary = false);
         Shader load_shader(const std::string& path);
         UINT frame_index;
         D3D12_Command command;
@@ -166,6 +177,9 @@ namespace Flan {
         ComPtr<ID3D12RootSignature> root_signature = nullptr;
         DynamicAllocator renderer_allocator = DynamicAllocator(8 MB);
         ID3D12PipelineState* pipeline_state_object;
+
+        // Camera
+        ConstBuffer camera_transform;
 
         // Draw queues
         ModelDrawInfo* model_queue = nullptr;
