@@ -13,7 +13,7 @@ int main()
     Flan::RendererDX12 renderer(&resources);
     renderer.init(1280, 720);
 
-    Flan::ResourceHandle quad_handle = resources.load_mesh("Assets/Models/quad.gltf");
+    Flan::ResourceHandle quad_handle = resources.load_mesh("Assets/Models/suzanne.gltf");
     resources.upload_mesh_to_gpu(quad_handle, renderer.get_device());
 
     // Debug memory

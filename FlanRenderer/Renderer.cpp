@@ -515,14 +515,14 @@ namespace Flan {
             ModelResource* model_resource = m_resource_manager->get_resource<ModelResource>(curr_model_info.model_to_draw);
             auto vertex_buffer_view = model_resource->meshes_gpu->vertex_buffer_view;
             auto index_buffer_view = model_resource->meshes_gpu->index_buffer_view;
-            auto n_triangles = model_resource->meshes_cpu->n_indices;
+            auto n_verts = model_resource->meshes_cpu->n_indices;
 
             // Bind the vertex buffer
             command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view); // Bind vertex buffer
             command_list->IASetIndexBuffer(&index_buffer_view); // Bind index buffer
 
             // Submit draw call
-            command_list->DrawIndexedInstanced(n_triangles, 1, 0, 0, 0);
+            command_list->DrawIndexedInstanced(n_verts, 1, 0, 0, 0);
         }
         model_queue_length = 0;
         command.end_frame();
