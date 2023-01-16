@@ -140,6 +140,10 @@
     <FxCompile>
       <ObjectFileOutput>$(OutDir)Assets\Shaders\%(Filename).cso</ObjectFileOutput>
     </FxCompile>
+    <PreBuildEvent>
+      <Command>robocopy /s $(ProjectDir)Assets\ $(OutDir)Assets\ 
+if %errorlevel% leq 7 exit 0 else exit %errorlevel%</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -161,6 +165,10 @@
     <FxCompile>
       <ObjectFileOutput>$(OutDir)Assets\Shaders\%(Filename).cso</ObjectFileOutput>
     </FxCompile>
+    <PreBuildEvent>
+      <Command>robocopy /s $(ProjectDir)Assets\ $(OutDir)Assets\ 
+if %errorlevel% leq 7 exit 0 else exit %errorlevel%</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Descriptor.cpp" />

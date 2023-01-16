@@ -16,6 +16,11 @@ namespace Flan {
 
         loader.LoadASCIIFromFile(&model, &error, &warning, path);
 
+        if (!error.empty()) {
+            printf("[ERROR] %s\n", error.c_str());
+            return false;
+        }
+
         std::string path_to_model_folder = path.substr(0, path.find_last_of('/')) + "/";
 
         //Parse materials
@@ -142,14 +147,93 @@ namespace Flan {
         //dynamic_free(materials);
         //dynamic_free(this);
     }
+    
+
+    template <typename src_type, typename dst_type>
+    std::vector<dst_type> pad_components_to_type(src_type* source, size_t n_comp_src, size_t n_comp_dst, size_t n_items, bool normalized) {
+        std::vector<dst_type> out_vector;
+
+        // For each item
+        for (size_t i = 0; i < n_items; ++i) {
+            // For each component
+            dst_type to_add;
+            for (size_t comp_i = 0; comp_i < n_comp_dst; ++comp_i) {
+                // Add first elements
+                if (n_comp_src >= comp_i) {
+                    to_add[comp_i] = static_cast<dst_type::value_type>(source[comp_i + n_comp_src * i]);
+                    if (normalized) to_add[comp_i] /= std::numeric_limits<src_type>::max();
+                }
+                else {
+                    to_add[comp_i] = 0;
+                }
+            }
+            out_vector.push_back(to_add);
+            printf("out_vector[%i][0] = %f\n", i, out_vector[i][0]);
+        }
+
+        return out_vector;
+    }
+    template <typename glm_type>
+    std::vector<glm_type> gltf_to_glm(void* pointer, tinygltf::Accessor accessor) {
+        std::vector<glm_type> out;
+
+        // Get number of components
+        size_t n_components = 0;
+        switch (accessor.type) {
+        case TINYGLTF_TYPE_SCALAR:
+            n_components = 1;
+            break;
+        case TINYGLTF_TYPE_VEC2:
+            n_components = 2;
+            break;
+        case TINYGLTF_TYPE_VEC3:
+            n_components = 3;
+            break;
+        case TINYGLTF_TYPE_VEC4:
+            n_components = 4;
+            break;
+        default:
+            printf("unknown gltf type %i!\n", accessor.type);
+            break;
+        }
+
+        // Get component type and convert to glm type
+        switch (accessor.componentType) {
+        case TINYGLTF_COMPONENT_TYPE_FLOAT:
+            out = pad_components_to_type<float, glm_type>((float*)pointer, n_components, glm_type::length(), accessor.count, accessor.normalized);
+            break;
+        case TINYGLTF_COMPONENT_TYPE_BYTE:
+            out = pad_components_to_type<int8_t, glm_type>((int8_t*)pointer, n_components, glm_type::length(), accessor.count, accessor.normalized);
+            break;
+        case TINYGLTF_COMPONENT_TYPE_SHORT:
+            out = pad_components_to_type<int16_t, glm_type>((int16_t*)pointer, n_components, glm_type::length(), accessor.count, accessor.normalized);
+            break;
+        case TINYGLTF_COMPONENT_TYPE_INT:
+            out = pad_components_to_type<int32_t, glm_type>((int32_t*)pointer, n_components, glm_type::length(), accessor.count, accessor.normalized);
+            break;
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+            out = pad_components_to_type<uint8_t, glm_type>((uint8_t*)pointer, n_components, glm_type::length(), accessor.count, accessor.normalized);
+            break;
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+            out = pad_components_to_type<uint16_t, glm_type>((uint16_t*)pointer, n_components, glm_type::length(), accessor.count, accessor.normalized);
+            break;
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
+            out = pad_components_to_type<uint32_t, glm_type>((uint32_t*)pointer, n_components, glm_type::length(), accessor.count, accessor.normalized);
+            break;
+        default:
+            printf("unknown gltf component type %i!\n", accessor.type);
+        }
+        return out;
+    }
+
 
     void ModelResource::create_vertex_array(MeshCPU& mesh_out, tinygltf::Primitive primitive_in, tinygltf::Model model, glm::mat4 trans_mat)
     {
-        glm::vec3* position_pointer = nullptr;
-        glm::vec3* normal_pointer = nullptr;
-        glm::vec3* tangent_pointer = nullptr;
-        glm::vec3* colour_pointer = nullptr;
-        glm::vec2* texcoord_pointer = nullptr;
+        std::vector<glm::vec3> position_pointer;
+        std::vector<glm::vec3> normal_pointer;
+        std::vector<glm::vec4> tangent_pointer;
+        std::vector<glm::vec4> colour_pointer;
+        std::vector<glm::vec2> texcoord_pointer;
         std::vector<int> indices;
 
         for (auto& attrib : primitive_in.attributes)
@@ -170,25 +254,28 @@ namespace Flan {
             void* buffer_pointer = &buffer_base[bufferview.byteOffset];
             assert(bufferview.byteStride == 0 && "byte_stride is not zero!");
 
+            printf("\nname: %s\n", name.c_str());
+
             if (name._Equal("POSITION"))
             {
-                position_pointer = static_cast<glm::vec3*>(buffer_pointer);
+                position_pointer = gltf_to_glm<glm::vec3>(buffer_pointer, accessor);
             }
             else if (name._Equal("NORMAL"))
             {
-                normal_pointer = static_cast<glm::vec3*>(buffer_pointer);
+                normal_pointer = gltf_to_glm<glm::vec3>(buffer_pointer, accessor);
             }
             else if (name._Equal("TANGENT"))
             {
-                tangent_pointer = static_cast<glm::vec3*>(buffer_pointer);
+                tangent_pointer = gltf_to_glm<glm::vec4>(buffer_pointer, accessor);
             }
             else if (name._Equal("TEXCOORD_0"))
             {
-                texcoord_pointer = static_cast<glm::vec2*>(buffer_pointer);
+                texcoord_pointer = gltf_to_glm<glm::vec2>(buffer_pointer, accessor);
             }
             else if (name._Equal("COLOR_0"))
             {
-                colour_pointer = static_cast<glm::vec3*>(buffer_pointer);
+                // todo: add type checking here cuz it's not always a short vector 3 now is it
+                colour_pointer = gltf_to_glm<glm::vec4>(buffer_pointer, accessor);
             }
         }
 
@@ -239,11 +326,17 @@ namespace Flan {
             for (int index : indices)
             {
                 Vertex vertex;
-                if (position_pointer != nullptr) { vertex.position = trans_mat * glm::vec4(position_pointer[index], 1.0f); }
-                if (normal_pointer != nullptr) { vertex.normal = glm::mat3(trans_mat) * normal_pointer[index]; }
-                if (tangent_pointer != nullptr) { vertex.tangent = glm::mat3(trans_mat) * tangent_pointer[index]; }
-                if (colour_pointer != nullptr) { vertex.colour = colour_pointer[index]; }
-                if (texcoord_pointer != nullptr) { vertex.texcoord0 = texcoord_pointer[index]; }
+                if (!position_pointer.empty()) { vertex.position = trans_mat * glm::vec4(position_pointer[index], 1.0f); }
+                if (!normal_pointer.empty()) { vertex.normal = glm::mat3(trans_mat) * (normal_pointer[index]); }
+                if (!tangent_pointer.empty()) { vertex.tangent = glm::mat3(trans_mat) * (glm::vec3(tangent_pointer[index])); }
+                if (!colour_pointer.empty()) {
+                    vertex.colour = {
+                        std::min(1.0f, powf(colour_pointer[index].x, 1.0f / 2.2f)),
+                        std::min(1.0f, powf(colour_pointer[index].y, 1.0f / 2.2f)),
+                        std::min(1.0f, powf(colour_pointer[index].z, 1.0f / 2.2f)),
+                    };
+                }
+                if (!texcoord_pointer.empty()) { vertex.texcoord0 = texcoord_pointer[index]; }
                 mesh_out.vertices[mesh_out.n_verts] = vertex;
                 mesh_out.indices[i] = i;
                 mesh_out.n_verts++;
