@@ -176,6 +176,7 @@ if %errorlevel% leq 7 exit 0 else exit %errorlevel%</Command>
     <ClCompile Include="Descriptor.cpp" />
     <ClCompile Include="DynamicAllocator.cpp" />
     <ClCompile Include="FlanRenderer.cpp" />
+    <ClCompile Include="Input.cpp" />
     <ClCompile Include="MaterialResource.cpp" />
     <ClCompile Include="ModelResource.cpp" />
     <ClCompile Include="Renderer.cpp" />
@@ -190,6 +191,7 @@ if %errorlevel% leq 7 exit 0 else exit %errorlevel%</Command>
     <ClInclude Include="FlanRenderer.h" />
     <ClInclude Include="FlanTypes.h" />
     <ClInclude Include="HelperFunctions.h" />
+    <ClInclude Include="Input.h" />
     <ClInclude Include="MaterialResource.h" />
     <ClInclude Include="ModelResource.h" />
     <ClInclude Include="Renderer.h" />

@@ -73,6 +73,12 @@ namespace Flan {
         frame_index = (frame_index + 1) % m_backbuffer_count;
     }
 
+    void RendererDX12::set_camera_transform(const Transform& transform) {
+        m_camera_transform.position = -transform.position;
+        m_camera_transform.rotation = transform.rotation;
+        m_camera_transform.scale = transform.scale;
+    }
+
     void Flan::RendererDX12::create_hwnd(int width, int height, std::string_view name) {
         // Create window - use GLFW_NO_API, since we're not using OpenGL
         glfwInit();
@@ -196,6 +202,65 @@ namespace Flan {
 
         m_frame_index = m_swapchain->GetCurrentBackBufferIndex();
     }
+
+    void Transform::set_position(const glm::vec3 new_position)
+    {
+        position = new_position;
+    }
+
+    void Transform::add_position(const glm::vec3 new_position)
+    {
+        position += new_position;
+    }
+
+    void Transform::set_rotation(const glm::vec3 new_euler_angles)
+    {
+        rotation = glm::quat(new_euler_angles);
+    }
+
+    void Transform::set_rotation(const glm::quat new_quaternion)
+    {
+        rotation = new_quaternion;
+    }
+
+    void Transform::add_rotation(const glm::vec3 new_euler_angles)
+    {
+        rotation = glm::normalize(glm::normalize(glm::quat(new_euler_angles)) * glm::normalize(rotation));
+    }
+
+    void Transform::add_rotation(const glm::quat new_quaternion, bool world_space)
+    {
+        if (world_space)
+            rotation = glm::normalize(glm::normalize(new_quaternion) * glm::normalize(rotation));
+        else
+            rotation = glm::normalize(rotation) * glm::normalize(glm::normalize(new_quaternion));
+    }
+
+    void Transform::set_scale(const glm::vec3 new_scale)
+    {
+        scale = new_scale;
+    }
+
+    void Transform::set_scale(const float new_scalar)
+    {
+        scale = glm::vec3(new_scalar);
+    }
+
+    glm::vec3 Transform::get_right_vector() const
+    {
+        return rotation * glm::vec3{ 1,0,0 };
+    }
+
+    glm::vec3 Transform::get_up_vector() const
+    {
+        return rotation * glm::vec3{ 0,1,0 };
+    }
+
+    glm::vec3 Transform::get_forward_vector() const
+    {
+        return rotation * glm::vec3{ 0,0,-1 };
+    }
+
 
     void ConstBuffer::update_data(ID3D12Device* device, void* new_data, size_t size) {
         // Copy the new data to the constant buffer
@@ -398,10 +463,19 @@ namespace Flan {
 
     void Flan::RendererDX12::create_root_signature()
     {
+        // Create descriptor range for textures
+        DescriptorRange texture_range {
+            D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+            16,
+            0,
+        };
+        
+
         // Create root parameters
-        RootParameter parameters[2];
-        parameters[0].as_constants(32, D3D12_SHADER_VISIBILITY_VERTEX, 0, 0); // Camera transform buffer
-        parameters[1].as_constants(16, D3D12_SHADER_VISIBILITY_VERTEX, 1, 0); // Camera transform buffer
+        RootParameter parameters[3];
+        parameters[0].as_constants(32, D3D12_SHADER_VISIBILITY_VERTEX, 0); // Camera transform buffer
+        parameters[1].as_constants(16, D3D12_SHADER_VISIBILITY_VERTEX, 1); // Camera transform buffer
+        parameters[2].as_descriptor_table(D3D12_SHADER_VISIBILITY_PIXEL, &texture_range, 1); // Camera transform buffer
 
         // Create root signature
         RootSignatureDesc root_signature_desc{ &parameters[0], _countof(parameters), nullptr, 0, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT };
@@ -499,8 +573,19 @@ namespace Flan {
         if (!create_window(w, h, "FlanRenderer (DirectX 12)")) {
             throw std::exception("Could not create window!");
         }
+
+        // todo: remove these
         m_camera_matrix = create_const_buffer(sizeof(TransformBuffer));
         m_model_matrix = create_const_buffer(sizeof(ModelTransformBuffer));
+
+        //
+        //D3D12_SAMPLER_DESC samplerDesc = {};
+        //samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        //samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        //samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        //samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        //m_device->CreateSampler(&samplerDesc, &sampler);
+
         return true;
     }
 
@@ -521,7 +606,7 @@ namespace Flan {
             glm::mat4 view;
             glm::mat4 projection;
         } camera_matrices;
-        camera_matrices.view = m_camera_transform.get_matrix();
+        camera_matrices.view = m_camera_transform.get_view_matrix();
         // todo: un-hardcode this
         camera_matrices.projection = glm::perspectiveRH_ZO(glm::radians(90.f), 16.f/9.f, 0.1f, 1000.f);
 
@@ -571,20 +656,25 @@ namespace Flan {
             auto n_verts = model_resource->meshes_cpu->n_indices;
 
             // todo: Get the albedo material from the mesh and bind the texture to the shader resource view
-            //TextureGPU& texture = model_resource->materials_gpu->tex_col;
+            TextureGPU& texture = model_resource->materials_gpu->tex_col;
 
             // Set root descriptor table
             ID3D12DescriptorHeap* desc_heap[] = {
-                m_cbv_heap.get_heap(),
+                m_srv_heap.get_heap(),
             };
 
             // Create and set a model matrix for this model
-            glm::mat4 model_matrix = curr_model_info.transform.get_matrix();
+            glm::mat4 model_matrix = curr_model_info.transform.get_model_matrix();
+            command_list->SetDescriptorHeaps(_countof(desc_heap), desc_heap);
             command_list->SetGraphicsRoot32BitConstants(1, 16, &model_matrix, 0);
+            command_list->SetGraphicsRootDescriptorTable(2, m_srv_heap.get_gpu_start());
 
             // Bind the vertex buffer
             command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view); // Bind vertex buffer
             command_list->IASetIndexBuffer(&index_buffer_view); // Bind index buffer
+
+            // todo: Set up the sampler
+            //command_list->
 
             // Submit draw call
             command_list->DrawIndexedInstanced(n_verts, 1, 0, 0, 0);

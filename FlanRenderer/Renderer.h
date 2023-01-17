@@ -20,6 +20,7 @@
 #include "Descriptor.h"
 #include "FlanTypes.h"
 #include "DynamicAllocator.h"
+#include "Input.h"
 #include "Resources.h"
 
 namespace Flan {
@@ -114,16 +115,43 @@ namespace Flan {
     };
 
     struct Transform {
-        glm::vec3 position;
-        glm::quat rotation;
-        glm::vec3 scale;
-        glm::mat4 get_matrix() const {
+        glm::vec3 position{0, 0, 0};
+        glm::quat rotation{1, 0, 0, 0};
+        glm::vec3 scale{1, 1, 1};
+        glm::vec3 get_position() const { return position; }
+        glm::vec3 get_euler_angles() const { return glm::eulerAngles(rotation); }
+        glm::quat get_rotation() const { return rotation; }
+        glm::vec3 get_scale() const { return scale; }
+        glm::mat4 get_model_matrix() const {
             glm::mat4 matrix = glm::mat4(1.0f);
             matrix = glm::translate(matrix, position);
             matrix = matrix * glm::mat4_cast(rotation);
             matrix = glm::scale(matrix, scale);
             return matrix;
         }
+        glm::mat4 get_view_matrix() const {
+            glm::mat4 result(1.0f);
+            return (glm::lookAtRH(
+                get_position(),
+                get_position() - get_forward_vector(),
+                get_up_vector()));
+        }
+
+        void set_position(glm::vec3 new_position);
+        void add_position(glm::vec3 new_position);
+
+        void set_rotation(glm::vec3 new_euler_angles);
+        void set_rotation(glm::quat new_quaternion);
+
+        void add_rotation(glm::vec3 new_euler_angles);
+        void add_rotation(const glm::quat new_quaternion, bool world_space = true);
+
+        void set_scale(glm::vec3 new_scale);
+        void set_scale(float new_scalar);
+
+        glm::vec3 get_right_vector() const;
+        glm::vec3 get_up_vector() const;
+        glm::vec3 get_forward_vector() const;
     };
 
     struct ModelDrawInfo {
@@ -149,6 +177,7 @@ namespace Flan {
         virtual void end_frame() {}
         virtual void draw_model(ModelDrawInfo model) {}
         virtual bool should_close() { return false; }
+        GLFWwindow* get_window() const { return window; }
 
     protected:
         GLFWwindow* window;
@@ -168,8 +197,9 @@ namespace Flan {
         void draw_model(ModelDrawInfo model) override;
         bool should_close() override;
         TextureGPU upload_texture(const ResourceHandle texture_handle, bool is_srgb, bool unload_resource_afterwards);
-        void upload_mesh(ResourceHandle handle, ResourceManager& resource_manager);;
+        void upload_mesh(ResourceHandle handle, ResourceManager& resource_manager);
         ID3D12Device* get_device() const { return m_device.Get(); }
+        void set_camera_transform(const Transform& transform);
     private:
         void create_hwnd(int width, int height, std::string_view name);
         void create_fence();
