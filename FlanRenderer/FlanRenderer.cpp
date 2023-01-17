@@ -31,8 +31,14 @@ int main()
     resources.get_allocator_instance()->debug_memory();
 
     // Define where the quad should be
-    Flan::Transform quad_transform {
-        {0, 0, -2},
+    Flan::Transform quad_transform{
+        {1, 0, -3},
+        {1, 0, 0, 0},
+        {1, 1, 1},
+    };
+    // Define where the quad should be
+    Flan::Transform quad_transform2{
+        {-1, 0, -3},
         {1, 0, 0, 0},
         {1, 1, 1},
     };
@@ -47,7 +53,9 @@ int main()
         // Render
         renderer.begin_frame();
         renderer.draw_model({ quad_handle, quad_transform });
+        renderer.draw_model({ quad_handle, quad_transform2 });
         quad_transform.rotation *= glm::quat(glm::vec3{ 0, 2.0f * delta_time, 0 });
+        quad_transform2.rotation *= glm::quat(glm::vec3{ 0, -2.0f * delta_time, 0 });
         renderer.end_frame();
     }
 

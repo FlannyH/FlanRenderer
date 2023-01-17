@@ -200,13 +200,6 @@ namespace Flan {
     void ConstBuffer::update_data(ID3D12Device* device, void* new_data, size_t size) {
         // Copy the new data to the constant buffer
         memcpy_s(buffer_data, buffer_size, new_data, size);
-
-        // Bind the constant buffer, copy the data to it, then unbind the constant buffer
-        D3D12_RANGE const_range{ 0, 0 };
-        uint8_t* const_data_begin = nullptr;
-        throw_if_failed(resource->Map(0, &const_range, reinterpret_cast<void**>(&const_data_begin)));
-        memcpy_s(const_data_begin, buffer_size, buffer_data, buffer_size);
-        resource->Unmap(0, nullptr);
     }
 
     bool Flan::RendererDX12::create_window(int width, int height, std::string_view name) {
@@ -405,15 +398,10 @@ namespace Flan {
 
     void Flan::RendererDX12::create_root_signature()
     {
-        // Define descriptor ranges
-        DescriptorRange descriptor_range[2]{
-            DescriptorRange{ D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 16, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE },
-            DescriptorRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 16, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE },
-        };
-
         // Create root parameters
-        RootParameter parameters[1];
-        parameters[0].as_descriptor_table(D3D12_SHADER_VISIBILITY_ALL, descriptor_range, 2);
+        RootParameter parameters[2];
+        parameters[0].as_constants(32, D3D12_SHADER_VISIBILITY_VERTEX, 0, 0); // Camera transform buffer
+        parameters[1].as_constants(16, D3D12_SHADER_VISIBILITY_VERTEX, 1, 0); // Camera transform buffer
 
         // Create root signature
         RootSignatureDesc root_signature_desc{ &parameters[0], _countof(parameters), nullptr, 0, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT };
@@ -512,6 +500,7 @@ namespace Flan {
             throw std::exception("Could not create window!");
         }
         m_camera_matrix = create_const_buffer(sizeof(TransformBuffer));
+        m_model_matrix = create_const_buffer(sizeof(ModelTransformBuffer));
         return true;
     }
 
@@ -536,11 +525,12 @@ namespace Flan {
         // todo: un-hardcode this
         camera_matrices.projection = glm::perspectiveRH_ZO(glm::radians(90.f), 16.f/9.f, 0.1f, 1000.f);
 
-        m_camera_matrix.update_data(m_device.Get(), &camera_matrices, sizeof(camera_matrices));
+        //m_camera_matrix.update_data(m_device.Get(), &camera_matrices, sizeof(camera_matrices));
 
         // Bind root signature
         auto* command_list = m_command.get_command_list();
         command_list->SetGraphicsRootSignature(m_root_signature.Get());
+        command_list->SetGraphicsRoot32BitConstants(0, 32, &camera_matrices, 0);
 
         // Bind pipeline state
         command_list->SetPipelineState(m_pipeline_state_object);
@@ -574,14 +564,6 @@ namespace Flan {
             // Get the model draw info for this entry
             ModelDrawInfo& curr_model_info = m_model_queue[i];
 
-            // Create a model matrix for this model
-            glm::mat4 model_matrix = curr_model_info.transform.get_matrix();
-
-            // Create a constant buffer for the model transform
-            auto model_transform_const_buffer = create_const_buffer(sizeof(ModelTransformBuffer), true);
-            memcpy_s(model_transform_const_buffer.buffer_data, model_transform_const_buffer.buffer_size, &model_matrix, sizeof(model_matrix));
-            model_transform_const_buffer.update_data(m_device.Get(), &model_matrix, sizeof(model_matrix));
-
             // Get the mesh from the resource manager
             ModelResource* model_resource = m_resource_manager->get_resource<ModelResource>(curr_model_info.model_to_draw);
             auto vertex_buffer_view = model_resource->meshes_gpu->vertex_buffer_view;
@@ -595,8 +577,10 @@ namespace Flan {
             ID3D12DescriptorHeap* desc_heap[] = {
                 m_cbv_heap.get_heap(),
             };
-            command_list->SetDescriptorHeaps(_countof(desc_heap), desc_heap);
-            command_list->SetGraphicsRootDescriptorTable(0, m_cbv_heap.get_gpu_start());
+
+            // Create and set a model matrix for this model
+            glm::mat4 model_matrix = curr_model_info.transform.get_matrix();
+            command_list->SetGraphicsRoot32BitConstants(1, 16, &model_matrix, 0);
 
             // Bind the vertex buffer
             command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view); // Bind vertex buffer

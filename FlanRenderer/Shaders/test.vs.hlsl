@@ -39,7 +39,7 @@ VertexOutput main(VertexInput vertex_input)
     position = mul(position, projection);
     output.position = position;
     output.colour = vertex_input.colour;
-    output.normal = vertex_input.normal;
+    output.normal = mul(vertex_input.normal, model);
     output.tangent = vertex_input.tangent;
     output.texcoord0 = vertex_input.texcoord0;
     output.texcoord1 = vertex_input.texcoord1;

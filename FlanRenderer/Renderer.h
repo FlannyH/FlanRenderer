@@ -199,7 +199,8 @@ namespace Flan {
             {1, 0, 0, 0},
             {1, 1, 1}
         };
-        ConstBuffer m_camera_matrix; // todo: make this a root constant instead of a descriptor table entry
+        ConstBuffer m_camera_matrix;
+        ConstBuffer m_model_matrix;
 
         // Draw queues
         ModelDrawInfo* m_model_queue = nullptr;
