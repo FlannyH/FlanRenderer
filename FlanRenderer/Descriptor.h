@@ -5,6 +5,7 @@
 #include <wrl.h>
 #include <vector>
 #include "CommonDefines.h"
+
 namespace Flan {
     using Microsoft::WRL::ComPtr;
     class DescriptorHeap;
@@ -38,6 +39,7 @@ namespace Flan {
         constexpr auto get_gpu_start() const { return gpu_start; }
         constexpr auto get_heap_size() const { return capacity; }
         const auto get_heap() const { return heap.Get(); }
+        void free_later(const DescriptorHandle& handle);
 
     private:
         ComPtr<ID3D12DescriptorHeap> heap;

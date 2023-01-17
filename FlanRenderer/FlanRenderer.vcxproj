@@ -178,6 +178,7 @@ if %errorlevel% leq 7 exit 0 else exit %errorlevel%</Command>
     <ClCompile Include="ModelResource.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="Resources.cpp" />
+    <ClCompile Include="RootParameter.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CommonDefines.h" />
@@ -190,6 +191,7 @@ if %errorlevel% leq 7 exit 0 else exit %errorlevel%</Command>
     <ClInclude Include="ModelResource.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Resources.h" />
+    <ClInclude Include="RootParameter.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\test.ps.hlsl">

@@ -15,10 +15,12 @@
 #include <chrono>
 #include <wrl.h>
 #include <string_view>
+
+#include "CommonDefines.h"
+#include "Descriptor.h"
 #include "FlanTypes.h"
 #include "DynamicAllocator.h"
 #include "Resources.h"
-#include "Descriptor.h"
 
 namespace Flan {
     using Microsoft::WRL::ComPtr;
@@ -156,7 +158,7 @@ namespace Flan {
         void end_frame() override;
         void draw_model(ModelDrawInfo model) override;
         bool should_close() override;
-        ID3D12Device* get_device() const { return device.Get(); }
+        ID3D12Device* get_device() const { return m_device.Get(); }
     private:
         void create_hwnd(int width, int height, std::string_view name);
         void create_fence();
@@ -167,44 +169,48 @@ namespace Flan {
         void create_pipeline_state_object();
         void create_descriptor_heaps();
         void create_root_signature();
+        void free_later(void* data_pointer);
         [[nodiscard]] ConstBuffer create_const_buffer(size_t buffer_size, bool temporary = false);
         Shader load_shader(const std::string& path);
-        UINT frame_index;
-        D3D12_Command command;
+        UINT m_frame_index;
+        D3D12_Command m_command;
         ComPtr<IDXGIFactory4> m_factory;
-        ComPtr<ID3D12Device> device = nullptr;
-        ComPtr<ID3D12PipelineState> pso = nullptr;
-        ComPtr<ID3D12RootSignature> root_signature = nullptr;
-        DynamicAllocator renderer_allocator = DynamicAllocator(8 MB);
-        ID3D12PipelineState* pipeline_state_object;
+        ComPtr<ID3D12Device> m_device = nullptr;
+        ComPtr<ID3D12PipelineState> m_pso = nullptr;
+        ComPtr<ID3D12RootSignature> m_root_signature = nullptr;
+        DynamicAllocator m_renderer_allocator = DynamicAllocator(8 MB);
+        ID3D12PipelineState* m_pipeline_state_object;
 
         // Camera
-        ConstBuffer camera_transform;
+        ConstBuffer m_camera_transform;
 
         // Draw queues
-        ModelDrawInfo* model_queue = nullptr;
-        size_t model_queue_length = 0;
+        ModelDrawInfo* m_model_queue = nullptr;
+        size_t m_model_queue_length = 0;
 
         // Descriptors
-        D3D12_DESCRIPTOR_RANGE1 cbv_srv_uav_range;
-        D3D12_DESCRIPTOR_RANGE1 sampler_range;
-        D3D12_DESCRIPTOR_RANGE1 rtv_range;
-        DescriptorHeap cbv_srv_uav_heap;
-        DescriptorHeap sample_heap;
-        DescriptorHeap rtv_heap;
+        //D3D12_DESCRIPTOR_RANGE1 cbv_srv_uav_range;
+        //D3D12_DESCRIPTOR_RANGE1 sampler_range;
+        D3D12_DESCRIPTOR_RANGE1 m_rtv_range;
+        D3D12_DESCRIPTOR_RANGE1 m_cbv_range;
+        //DescriptorHeap cbv_srv_uav_heap;
+        //DescriptorHeap sample_heap;
+        DescriptorHeap m_rtv_heap;
+        DescriptorHeap m_cbv_heap;
 
         // Swapchain
-        [[deprecated]] ComPtr<ID3D12DescriptorHeap> render_target_view_heap;
-        ComPtr<IDXGISwapChain3> swapchain = nullptr;
-        ComPtr<ID3D12Resource> render_targets[m_backbuffer_count];
-        [[deprecated]] UINT render_target_view_descriptor_size;
-        D3D12_VIEWPORT viewport;
-        D3D12_RECT surface_size;
-        DescriptorHandle rtv_handles[m_backbuffer_count];
+        [[deprecated]] ComPtr<ID3D12DescriptorHeap> m_render_target_view_heap;
+        ComPtr<IDXGISwapChain3> m_swapchain = nullptr;
+        ComPtr<ID3D12Resource> m_render_targets[m_backbuffer_count];
+        [[deprecated]] UINT m_render_target_view_descriptor_size;
+        D3D12_VIEWPORT m_viewport;
+        D3D12_RECT m_surface_size;
+        DescriptorHandle m_rtv_handles[m_backbuffer_count];
 
         // Debug
-        std::vector<std::string> init_flags;
+        std::vector<std::string> m_init_flags;
 
         [[maybe_unused]] ComPtr<ID3D12Debug1> m_debug_interface;// If we're in release mode, this variable will be unused
+        std::vector<void*> m_to_be_deallocated[m_backbuffer_count]{};
     };
 }

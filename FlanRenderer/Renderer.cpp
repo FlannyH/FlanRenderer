@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include "HelperFunctions.h"
 #include "ModelResource.h"
+#include "RootParameter.h"
 
 namespace Flan {
     Flan::D3D12_Command::D3D12_Command(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE type) {
@@ -81,30 +82,30 @@ namespace Flan {
 
     void Flan::RendererDX12::create_fence() {
         // Create fences for each backbuffer
-        assert(device);
+        assert(m_device);
         HANDLE fence_event = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         ComPtr<ID3D12Fence> fences[m_backbuffer_count];
         UINT64 fence_values[m_backbuffer_count];
         for (unsigned i = 0u; i < m_backbuffer_count; ++i) {
-            throw_if_failed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fences[i])));
+            throw_if_failed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fences[i])));
             fence_values[i] = 0;
         }
     }
 
     void Flan::RendererDX12::create_swapchain(int width, int height) {
         // Define surface size
-        surface_size.left = 0;
-        surface_size.top = 0;
-        surface_size.right = width;
-        surface_size.bottom = height;
+        m_surface_size.left = 0;
+        m_surface_size.top = 0;
+        m_surface_size.right = width;
+        m_surface_size.bottom = height;
 
         // Define viewport
-        viewport.TopLeftX = 0.0f;
-        viewport.TopLeftY = 0.0f;
-        viewport.Width = static_cast<float>(width);
-        viewport.Height = static_cast<float>(height);
-        viewport.MinDepth = 0.0f;
-        viewport.MaxDepth = 1.0f;
+        m_viewport.TopLeftX = 0.0f;
+        m_viewport.TopLeftY = 0.0f;
+        m_viewport.Width = static_cast<float>(width);
+        m_viewport.Height = static_cast<float>(height);
+        m_viewport.MinDepth = 0.0f;
+        m_viewport.MaxDepth = 1.0f;
 
         // Create swapchain description
         DXGI_SWAP_CHAIN_DESC1 swapchain_desc{};
@@ -118,24 +119,24 @@ namespace Flan {
 
         // Create swapchain
         IDXGISwapChain1* new_swapchain = nullptr;
-        m_factory->CreateSwapChainForHwnd(command.get_command_queue(), m_hwnd, &swapchain_desc, nullptr, nullptr, &new_swapchain);
+        m_factory->CreateSwapChainForHwnd(m_command.get_command_queue(), m_hwnd, &swapchain_desc, nullptr, nullptr, &new_swapchain);
         HRESULT swapchain_support = new_swapchain->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void**>(&new_swapchain));
         if (SUCCEEDED(swapchain_support)) {
-            swapchain = static_cast<IDXGISwapChain3*>(new_swapchain);
+            m_swapchain = static_cast<IDXGISwapChain3*>(new_swapchain);
         }
 
-        if (!swapchain) {
+        if (!m_swapchain) {
             throw_fatal("Failed to create Direct3D swapchain!");
         }
 
         // Create RTV for each frame
         for (UINT i = 0; i < m_backbuffer_count; i++) {
-            rtv_handles[i] = rtv_heap.allocate();
-            throw_if_failed(swapchain->GetBuffer(i, IID_PPV_ARGS(&render_targets[i])));
-            device->CreateRenderTargetView(render_targets[i].Get(), nullptr, rtv_handles[i].cpu);
+            m_rtv_handles[i] = m_rtv_heap.allocate();
+            throw_if_failed(m_swapchain->GetBuffer(i, IID_PPV_ARGS(&m_render_targets[i])));
+            m_device->CreateRenderTargetView(m_render_targets[i].Get(), nullptr, m_rtv_handles[i].cpu);
         }
 
-        frame_index = swapchain->GetCurrentBackBufferIndex();
+        m_frame_index = m_swapchain->GetCurrentBackBufferIndex();
     }
 
     bool Flan::RendererDX12::create_window(int width, int height, std::string_view name) {
@@ -183,39 +184,39 @@ namespace Flan {
             }
 
             // We should have a hardware adapter now, but does it support Direct3D 12.0?
-            if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device)))) {
+            if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device)))) {
                 // Yes it does! We use this one.
                 break;
             }
 
             // It doesn't? Unfortunate, let it go and try another adapter
-            device = nullptr;
+            m_device = nullptr;
             adapter->Release();
             adapter_index++;
         }
 
-        if (device == nullptr) {
+        if (m_device == nullptr) {
             throw_fatal("Failed to create Direct3D device!");
         }
 
 #if _DEBUG
         // If we're in debug mode, create the debug device handle
         ComPtr<ID3D12DebugDevice> device_debug;
-        throw_if_failed(device->QueryInterface(device_debug.GetAddressOf()));
+        throw_if_failed(m_device->QueryInterface(device_debug.GetAddressOf()));
 #endif
     }
 
     void Flan::RendererDX12::create_command()
     {
-        command = D3D12_Command(device.Get(), D3D12_COMMAND_LIST_TYPE_DIRECT);
-        if (command.get_command_queue() == nullptr) {
+        m_command = D3D12_Command(m_device.Get(), D3D12_COMMAND_LIST_TYPE_DIRECT);
+        if (m_command.get_command_queue() == nullptr) {
             throw_fatal("Failed to create command queue!");
         }
     }
 
     void Flan::RendererDX12::create_pipeline_state_object()
     {
-        assert(device);
+        assert(m_device);
 
         // todo: remove magic hardcoded shader description
         ShaderDescription shader_description;
@@ -247,7 +248,7 @@ namespace Flan {
         // Create pipeline state description
         D3D12_GRAPHICS_PIPELINE_STATE_DESC pipeline_state_description{};
         pipeline_state_description.InputLayout = { input_element_descs, (u32)shader_description.parameters.size() };
-        pipeline_state_description.pRootSignature = root_signature.Get();
+        pipeline_state_description.pRootSignature = m_root_signature.Get();
         pipeline_state_description.VS = shader.vs_bytecode;
         pipeline_state_description.PS = shader.ps_bytecode;
 
@@ -302,7 +303,7 @@ namespace Flan {
 
         // Create graphics pipeline state
         try {
-            throw_if_failed(device->CreateGraphicsPipelineState(&pipeline_state_description, IID_PPV_ARGS(&pipeline_state_object)));
+            throw_if_failed(m_device->CreateGraphicsPipelineState(&pipeline_state_description, IID_PPV_ARGS(&m_pipeline_state_object)));
         }
         catch ([[maybe_unused]] std::exception& e) {
             puts("Failed to create Graphics Pipeline");
@@ -312,97 +313,47 @@ namespace Flan {
     void RendererDX12::create_descriptor_heaps()
     {
         // Create descriptor heaps
-        cbv_srv_uav_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        sample_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-        rtv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-        cbv_srv_uav_heap.init(device.Get(), 16, true);
-        sample_heap.init(device.Get(), 1, true);
-        rtv_heap.init(device.Get(), m_backbuffer_count, true);
+        //cbv_srv_uav_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        //sample_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+        m_rtv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        m_cbv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        //cbv_srv_uav_heap.init(device.Get(), 16, true);
+        //sample_heap.init(device.Get(), 1, true);
+        m_rtv_heap.init(m_device.Get(), m_backbuffer_count, true);
+        m_cbv_heap.init(m_device.Get(), 16, true);
     }
 
     void Flan::RendererDX12::create_root_signature()
     {
-        assert(device);
+        // Define descriptor ranges
+        DescriptorRange descriptor_range{ D3D12_DESCRIPTOR_RANGE_TYPE_CBV, D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE };
 
-        // todo: make this more flexible and less magic number-y
+        // Create root parameters
+        RootParameter parameters[1];
+        parameters[0].as_descriptor_table(D3D12_SHADER_VISIBILITY_VERTEX, &descriptor_range, 1);
 
-        //// Create descriptor ranges
-        //D3D12_DESCRIPTOR_RANGE1 ranges[3];
-        //ranges[0].BaseShaderRegister = 0;
-        //ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        //ranges[0].NumDescriptors = 2;
-        //ranges[0].RegisterSpace = 0;
-        //ranges[0].OffsetInDescriptorsFromTableStart = 0;
-        //ranges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
-        //
-        //ranges[1].BaseShaderRegister = 2;
-        //ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        //ranges[1].NumDescriptors = 1;
-        //ranges[1].RegisterSpace = 0;
-        //ranges[1].OffsetInDescriptorsFromTableStart = 2;
-        //ranges[1].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
-        //
-        //ranges[2].BaseShaderRegister = 3;
-        //ranges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        //ranges[2].NumDescriptors = 1;
-        //ranges[2].RegisterSpace = 0;
-        //ranges[2].OffsetInDescriptorsFromTableStart = 3;
-        //ranges[2].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
+        // Create root signature
+        RootSignatureDesc root_signature_desc{ &parameters[0], _countof(parameters), nullptr, 0, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT };
+        m_root_signature = root_signature_desc.create(m_device.Get());
+    }
 
-        // Create descriptor ranges
-        D3D12_DESCRIPTOR_RANGE1 ranges[3] = { cbv_srv_uav_range, sampler_range, rtv_range };
-
-        // Bind the descriptor ranges to the descriptor table of the root signature
-        D3D12_ROOT_PARAMETER1 root_parameters[1];
-        root_parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        root_parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-        root_parameters[0].DescriptorTable.NumDescriptorRanges = 3;
-        root_parameters[0].DescriptorTable.pDescriptorRanges = ranges;
-
-        // Describe the root signature 
-        D3D12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
-        root_signature_desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
-        root_signature_desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-        root_signature_desc.Desc_1_1.NumParameters = 1;
-        root_signature_desc.Desc_1_1.pParameters = root_parameters;
-        root_signature_desc.Desc_1_1.NumStaticSamplers = 0;
-        root_signature_desc.Desc_1_1.pStaticSamplers = nullptr;
-
-        // Now let's actually create the root signature
-        ComPtr<ID3DBlob> signature;
-        ComPtr<ID3DBlob> error;
-        try {
-            throw_if_failed(D3D12SerializeVersionedRootSignature(&root_signature_desc, &signature, &error));
-            throw_if_failed(device->CreateRootSignature(0, signature->GetBufferPointer(),
-                signature->GetBufferSize(), IID_PPV_ARGS(&root_signature)));
-            root_signature->SetName(L"Hello Triangle Root Signature");
-        }
-        catch ([[maybe_unused]] std::exception& e) {
-            auto err_str = static_cast<const char*>(error->GetBufferPointer());
-            std::cout << err_str;
-            error->Release();
-            error = nullptr;
-        }
-
-        if (signature) {
-            signature->Release();
-            signature = nullptr;
-        }
+    void RendererDX12::free_later(void* data_pointer) {
+        m_to_be_deallocated[m_frame_index].push_back(data_pointer);
     }
 
     ConstBuffer Flan::RendererDX12::create_const_buffer(size_t buffer_size, bool temporary)
     {
-        assert(device);
+        assert(m_device);
 
         // Create the const buffer
         ConstBuffer const_buffer{};
 
         // Allocate memory for the buffer in CPU space
-        const_buffer.buffer_data = renderer_allocator.allocate(buffer_size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+        const_buffer.buffer_data = m_renderer_allocator.allocate(buffer_size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
         const_buffer.buffer_size = buffer_size;
 
         // Get a handle where we can put the constant buffer
-        const_buffer.handle = cbv_srv_uav_heap.allocate();
+        const_buffer.handle = m_cbv_heap.allocate();
 #ifdef _DEBUG
         printf("const_buffer.handle.index = %i\n", const_buffer.handle.index);
         printf("const_buffer.buffer_data = %p (%i bytes)\n", const_buffer.buffer_data, const_buffer.buffer_size);
@@ -410,7 +361,8 @@ namespace Flan {
 
         // If this buffer is temporary, mark it for deallocation, which will free the buffer handle a few frames from now
         if (temporary) {
-            //cbv_srv_uav_heap.free(const_buffer.handle);
+            m_cbv_heap.free_later(const_buffer.handle);
+            free_later(const_buffer.buffer_data);
         }
 
         // Define upload properties
@@ -436,7 +388,7 @@ namespace Flan {
 
         // Create a constant buffer resource
         ComPtr<ID3D12Resource> const_buffer_resource;
-        throw_if_failed(device->CreateCommittedResource(
+        throw_if_failed(m_device->CreateCommittedResource(
             &upload_heap_props,
             D3D12_HEAP_FLAG_NONE,
             &upload_buffer_desc,
@@ -489,50 +441,56 @@ namespace Flan {
         if (!create_window(w, h, "FlanRenderer (DirectX 12)")) {
             throw std::exception("Could not create window!");
         }
-        camera_transform = create_const_buffer(sizeof(TransformBuffer));
+        m_camera_transform = create_const_buffer(sizeof(TransformBuffer));
         return true;
     }
 
     void RendererDX12::begin_frame()
     {
-        command.begin_frame();
-        
+        m_command.begin_frame();
+
+        // Handle deferred frees
+        for (void* pointer : m_to_be_deallocated[m_frame_index]) {
+            m_renderer_allocator.release(pointer);
+        }
+        m_to_be_deallocated[m_frame_index].clear();
+        m_cbv_heap.do_deferred_releases(m_frame_index);
+
         // Update constant buffer
 
         // Bind root signature
-        auto* command_list = command.get_command_list();
-        command_list->SetGraphicsRootSignature(root_signature.Get());
+        auto* command_list = m_command.get_command_list();
+        command_list->SetGraphicsRootSignature(m_root_signature.Get());
 
         // Bind descriptor heap
-        ID3D12DescriptorHeap* descriptor_heaps[] = { cbv_srv_uav_heap.get_heap()};
+        ID3D12DescriptorHeap* descriptor_heaps[] = { m_cbv_heap.get_heap()};
         command_list->SetDescriptorHeaps(_countof(descriptor_heaps), descriptor_heaps);
-        //DescriptorHandle const_buffer_view_handle = cbv_srv_uav_heap.get_cpu_start();
 
         // Set root descriptor table
-        command_list->SetGraphicsRootDescriptorTable(0, cbv_srv_uav_heap.get_gpu_start());
+        command_list->SetGraphicsRootDescriptorTable(0, m_cbv_heap.get_gpu_start());
 
         // Set render target
-        command_list->OMSetRenderTargets(1, &rtv_handles[frame_index].cpu, FALSE, nullptr);
+        command_list->OMSetRenderTargets(1, &m_rtv_handles[m_frame_index].cpu, FALSE, nullptr);
 
-        command_list->SetPipelineState(pipeline_state_object);
+        command_list->SetPipelineState(m_pipeline_state_object);
     }
 
     void RendererDX12::end_frame()
     {
         // Record raster commands
         constexpr float clear_color[] = { 0.1f, 0.1f, 0.2f, 1.0f };
-        auto* command_list = command.get_command_list();
+        auto* command_list = m_command.get_command_list();
 
         // Set up viewport
-        command_list->RSSetViewports(1, &viewport); // Set viewport
-        command_list->RSSetScissorRects(1, &surface_size); // todo: comment
-        command_list->ClearRenderTargetView(rtv_handles[frame_index].cpu, clear_color, 0, nullptr); // Clear the screen
+        command_list->RSSetViewports(1, &m_viewport); // Set viewport
+        command_list->RSSetScissorRects(1, &m_surface_size); // todo: comment
+        command_list->ClearRenderTargetView(m_rtv_handles[m_frame_index].cpu, clear_color, 0, nullptr); // Clear the screen
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // We draw triangles
 
         // Loop over each model
-        for (size_t i = 0; i < model_queue_length; ++i) {
+        for (size_t i = 0; i < m_model_queue_length; ++i) {
             // Get the model draw info for this entry
-            ModelDrawInfo& curr_model_info = model_queue[i];
+            ModelDrawInfo& curr_model_info = m_model_queue[i];
 
             // Create a model matrix for this model
             glm::mat4 model_matrix = glm::mat4(1.0f);
@@ -541,7 +499,7 @@ namespace Flan {
             model_matrix = glm::scale(model_matrix, curr_model_info.transform.scale);
 
             // Create a constant buffer for the model transform
-            //auto model_transform_const_buffer = create_const_buffer(sizeof(ModelTransformBuffer), true);
+            auto model_transform_const_buffer = create_const_buffer(sizeof(ModelTransformBuffer), true);
 
             // Get the mesh from the resource manager
             ModelResource* model_resource = m_resource_manager->get_resource<ModelResource>(curr_model_info.model_to_draw);
@@ -560,12 +518,12 @@ namespace Flan {
             // Submit draw call
             command_list->DrawIndexedInstanced(n_verts, 1, 0, 0, 0);
         }
-        model_queue_length = 0;
-        command.end_frame();
+        m_model_queue_length = 0;
+        m_command.end_frame();
 
         // Update window
-        swapchain->Present(1, 0);
-        frame_index = swapchain->GetCurrentBackBufferIndex();
+        m_swapchain->Present(1, 0);
+        m_frame_index = m_swapchain->GetCurrentBackBufferIndex();
 
         // Update GLFW window
         glfwPollEvents();
@@ -575,12 +533,12 @@ namespace Flan {
     void RendererDX12::draw_model(ModelDrawInfo model)
     {
         // Make sure we have a queue
-        if (model_queue == nullptr) {
-            model_queue = (ModelDrawInfo*)renderer_allocator.allocate(sizeof(ModelDrawInfo) * 1024);
+        if (m_model_queue == nullptr) {
+            m_model_queue = (ModelDrawInfo*)m_renderer_allocator.allocate(sizeof(ModelDrawInfo) * 1024);
         }
 
         // Add the model to the queue
-        model_queue[model_queue_length++] = model;
+        m_model_queue[m_model_queue_length++] = model;
     }
 
     bool RendererDX12::should_close()

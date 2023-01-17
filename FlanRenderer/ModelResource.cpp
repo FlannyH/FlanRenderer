@@ -168,7 +168,6 @@ namespace Flan {
                 }
             }
             out_vector.push_back(to_add);
-            printf("out_vector[%i][0] = %f\n", i, out_vector[i][0]);
         }
 
         return out_vector;

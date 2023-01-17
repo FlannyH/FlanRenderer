@@ -43,6 +43,7 @@ namespace Flan {
         for (auto& index : slots_to_be_freed[frame_index]) {
 
             slots_used[index] = -1;
+            --size;
             printf("released slot %i from the descriptor heap\n", index);
         }
 
@@ -91,6 +92,11 @@ namespace Flan {
 
     void DescriptorHeap::free(DescriptorHandle& handle)
     {
+        free_later(handle);
+        handle = {};
+    }
+
+    void DescriptorHeap::free_later(const DescriptorHandle& handle) {
         // Ignore if invalid
         if (!handle.is_valid()) return;
 
@@ -105,7 +111,5 @@ namespace Flan {
 
         // Defer the deallocations to the next time this heap is used
         slots_to_be_freed->push_back(index);
-
-        handle = {};
     }
 }
