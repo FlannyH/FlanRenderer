@@ -1,12 +1,12 @@
 cbuffer camera_transform : register(b0)
 {
-    matrix view;
-    matrix projection;
+    row_major matrix view;
+    row_major matrix projection;
 };
 
-cbuffer camera_transform : register(b1)
+cbuffer model_transform : register(b1)
 {
-    matrix model;
+    row_major matrix model;
 };
 
 
@@ -33,7 +33,11 @@ struct VertexOutput
 VertexOutput main(VertexInput vertex_input)
 {
     VertexOutput output;
-    output.position = float4(vertex_input.position, 0.5f);
+    float4 position = float4(vertex_input.position, 1.0f);
+    position = mul(position, model);
+    position = mul(position, view);
+    position = mul(position, projection);
+    output.position = position;
     output.colour = vertex_input.colour;
     output.normal = vertex_input.normal;
     output.tangent = vertex_input.tangent;

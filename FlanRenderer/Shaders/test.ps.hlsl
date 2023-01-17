@@ -17,6 +17,6 @@ PixelOutput main(PixelInput pixel_input)
 {
     float3 in_colour = pixel_input.colour;
     PixelOutput output;
-    output.attachment0 = float4(in_colour, 1.0f);
+    output.attachment0 = float4(in_colour, 1.0f) * clamp(dot(pixel_input.normal, float3(1.0f, 1.0f, 0.0f)), 0.1f, 1.0f);
     return output;
 }

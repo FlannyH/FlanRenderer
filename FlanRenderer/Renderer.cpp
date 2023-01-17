@@ -128,15 +128,84 @@ namespace Flan {
         if (!m_swapchain) {
             throw_fatal("Failed to create Direct3D swapchain!");
         }
-
+        
         // Create RTV for each frame
         for (UINT i = 0; i < m_backbuffer_count; i++) {
             m_rtv_handles[i] = m_rtv_heap.allocate();
             throw_if_failed(m_swapchain->GetBuffer(i, IID_PPV_ARGS(&m_render_targets[i])));
-            m_device->CreateRenderTargetView(m_render_targets[i].Get(), nullptr, m_rtv_handles[i].cpu);
+            m_device->CreateRenderTargetView(m_render_targets[i].Get(), nullptr, m_rtv_handles[i].cpu); 
+        }
+
+        // Create depth texture and depth stencil view for each frame
+        DXGI_FORMAT dsv_format = DXGI_FORMAT_D32_FLOAT;
+        DXGI_FORMAT texture_format = DXGI_FORMAT_D32_FLOAT;
+        D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc;
+        srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srv_desc.Texture2D.MipLevels = 1;
+        srv_desc.Texture2D.MostDetailedMip = 0;
+        srv_desc.Texture2D.PlaneSlice = 0;
+        srv_desc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+        D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc{};
+        dsv_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        dsv_desc.Flags = D3D12_DSV_FLAG_NONE;
+        dsv_desc.Format = dsv_format;
+        dsv_desc.Texture2D.MipSlice = 0;
+
+        D3D12_RESOURCE_DESC depth_resource_desc{};
+        depth_resource_desc.Format = DXGI_FORMAT_D32_FLOAT;
+        depth_resource_desc.Width = width;
+        depth_resource_desc.Height = height;
+        depth_resource_desc.SampleDesc.Count = 1;
+        depth_resource_desc.SampleDesc.Quality = 0;
+        depth_resource_desc.DepthOrArraySize = 1;
+        depth_resource_desc.MipLevels = 0;
+        depth_resource_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        depth_resource_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        depth_resource_desc.Alignment = 0;
+        depth_resource_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+        D3D12_CLEAR_VALUE optimized_clear_value = {};
+        optimized_clear_value.Format = DXGI_FORMAT_D32_FLOAT;
+        optimized_clear_value.DepthStencil = { 1.0f, 0 };
+        
+        for (UINT i = 0; i < m_backbuffer_count; i++) {
+            // Create the texture resource
+            D3D12_HEAP_PROPERTIES default_heap{
+                D3D12_HEAP_TYPE_DEFAULT,
+                D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+                D3D12_MEMORY_POOL_UNKNOWN,
+                0,
+                0
+            };
+            m_device->CreateCommittedResource(
+                &default_heap, 
+                D3D12_HEAP_FLAG_NONE, 
+                &depth_resource_desc, 
+                D3D12_RESOURCE_STATE_DEPTH_WRITE, 
+                &optimized_clear_value, 
+                IID_PPV_ARGS(&m_depth_targets[i])
+            );
+
+            // Create the DSV
+            m_dsv_handles[i] = m_dsv_heap.allocate();
+            m_device->CreateDepthStencilView(m_depth_targets[i].Get(), &dsv_desc, m_dsv_handles[i].cpu);
         }
 
         m_frame_index = m_swapchain->GetCurrentBackBufferIndex();
+    }
+
+    void ConstBuffer::update_data(ID3D12Device* device, void* new_data, size_t size) {
+        // Copy the new data to the constant buffer
+        memcpy_s(buffer_data, buffer_size, new_data, size);
+
+        // Bind the constant buffer, copy the data to it, then unbind the constant buffer
+        D3D12_RANGE const_range{ 0, 0 };
+        uint8_t* const_data_begin = nullptr;
+        throw_if_failed(resource->Map(0, &const_range, reinterpret_cast<void**>(&const_data_begin)));
+        memcpy_s(const_data_begin, buffer_size, buffer_data, buffer_size);
+        resource->Unmap(0, nullptr);
     }
 
     bool Flan::RendererDX12::create_window(int width, int height, std::string_view name) {
@@ -292,13 +361,19 @@ namespace Flan {
 
 
         // Set up depth/stencil state
-        pipeline_state_description.DepthStencilState.DepthEnable = FALSE;
+        pipeline_state_description.DepthStencilState.DepthEnable = TRUE;
+        pipeline_state_description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+        pipeline_state_description.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+        pipeline_state_description.DepthStencilState.StencilEnable = FALSE;
+        pipeline_state_description.DepthStencilState.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
+        pipeline_state_description.DepthStencilState.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
         pipeline_state_description.DepthStencilState.StencilEnable = FALSE;
         pipeline_state_description.SampleMask = UINT_MAX;
 
         // Setup render target output
         pipeline_state_description.NumRenderTargets = 1;
         pipeline_state_description.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        pipeline_state_description.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         pipeline_state_description.SampleDesc.Count = 1;
 
         // Create graphics pipeline state
@@ -316,17 +391,19 @@ namespace Flan {
         //cbv_srv_uav_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         //sample_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
         m_rtv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        m_dsv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
         m_cbv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         //cbv_srv_uav_heap.init(device.Get(), 16, true);
         //sample_heap.init(device.Get(), 1, true);
         m_rtv_heap.init(m_device.Get(), m_backbuffer_count, true);
+        m_dsv_heap.init(m_device.Get(), m_backbuffer_count, true);
         m_cbv_heap.init(m_device.Get(), 16, true);
     }
 
     void Flan::RendererDX12::create_root_signature()
     {
         // Define descriptor ranges
-        DescriptorRange descriptor_range{ D3D12_DESCRIPTOR_RANGE_TYPE_CBV, D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE };
+        DescriptorRange descriptor_range{ D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 16, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE };
 
         // Create root parameters
         RootParameter parameters[1];
@@ -354,10 +431,6 @@ namespace Flan {
 
         // Get a handle where we can put the constant buffer
         const_buffer.handle = m_cbv_heap.allocate();
-#ifdef _DEBUG
-        printf("const_buffer.handle.index = %i\n", const_buffer.handle.index);
-        printf("const_buffer.buffer_data = %p (%i bytes)\n", const_buffer.buffer_data, const_buffer.buffer_size);
-#endif
 
         // If this buffer is temporary, mark it for deallocation, which will free the buffer handle a few frames from now
         if (temporary) {
@@ -387,7 +460,6 @@ namespace Flan {
         };
 
         // Create a constant buffer resource
-        ComPtr<ID3D12Resource> const_buffer_resource;
         throw_if_failed(m_device->CreateCommittedResource(
             &upload_heap_props,
             D3D12_HEAP_FLAG_NONE,
@@ -395,21 +467,13 @@ namespace Flan {
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
             __uuidof(ID3D12Resource),
-            (void**)&const_buffer_resource
+            (void**)&const_buffer.resource
         ));
 
         // Create a constant buffer description
-        //D3D12_CONSTANT_BUFFER_VIEW_DESC const_buffer_view_desc{};
-        const_buffer.view_desc = D3D12_CONSTANT_BUFFER_VIEW_DESC{};
-        const_buffer.view_desc.BufferLocation = const_buffer_resource->GetGPUVirtualAddress();
+        const_buffer.view_desc.BufferLocation = const_buffer.resource->GetGPUVirtualAddress();
         const_buffer.view_desc.SizeInBytes = (const_buffer.buffer_size | 0xFF) + 1;
-
-        // Copy the data over
-        D3D12_RANGE const_range{ 0, 0 };
-        uint8_t* const_data_begin = nullptr;
-        throw_if_failed(const_buffer_resource->Map(0, &const_range, reinterpret_cast<void**>(&const_data_begin)));
-        memcpy_s(const_data_begin, const_buffer.buffer_size, &const_buffer.buffer_data, const_buffer.buffer_size);
-        const_buffer_resource->Unmap(0, nullptr);
+        m_device->CreateConstantBufferView(&const_buffer.view_desc, const_buffer.handle.cpu);
 
         return const_buffer;
     }
@@ -441,7 +505,7 @@ namespace Flan {
         if (!create_window(w, h, "FlanRenderer (DirectX 12)")) {
             throw std::exception("Could not create window!");
         }
-        m_camera_transform = create_const_buffer(sizeof(TransformBuffer));
+        m_camera_matrix = create_const_buffer(sizeof(TransformBuffer));
         return true;
     }
 
@@ -456,22 +520,23 @@ namespace Flan {
         m_to_be_deallocated[m_frame_index].clear();
         m_cbv_heap.do_deferred_releases(m_frame_index);
 
-        // Update constant buffer
+        // Update camera constant buffer
+        struct {
+
+            glm::mat4 view;
+            glm::mat4 projection;
+        } camera_matrices;
+        camera_matrices.view = m_camera_transform.get_matrix();
+        // todo: un-hardcode this
+        camera_matrices.projection = glm::perspectiveRH_ZO(glm::radians(90.f), 16.f/9.f, 0.1f, 1000.f);
+
+        m_camera_matrix.update_data(m_device.Get(), &camera_matrices, sizeof(camera_matrices));
 
         // Bind root signature
         auto* command_list = m_command.get_command_list();
         command_list->SetGraphicsRootSignature(m_root_signature.Get());
 
-        // Bind descriptor heap
-        ID3D12DescriptorHeap* descriptor_heaps[] = { m_cbv_heap.get_heap()};
-        command_list->SetDescriptorHeaps(_countof(descriptor_heaps), descriptor_heaps);
-
-        // Set root descriptor table
-        command_list->SetGraphicsRootDescriptorTable(0, m_cbv_heap.get_gpu_start());
-
-        // Set render target
-        command_list->OMSetRenderTargets(1, &m_rtv_handles[m_frame_index].cpu, FALSE, nullptr);
-
+        // Bind pipeline state
         command_list->SetPipelineState(m_pipeline_state_object);
     }
 
@@ -480,11 +545,22 @@ namespace Flan {
         // Record raster commands
         constexpr float clear_color[] = { 0.1f, 0.1f, 0.2f, 1.0f };
         auto* command_list = m_command.get_command_list();
+        // Set backbuffer as render target
+        D3D12_RESOURCE_BARRIER render_target_barrier;
+        render_target_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        render_target_barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        render_target_barrier.Transition.pResource = m_render_targets[m_frame_index].Get();
+        render_target_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+        render_target_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        render_target_barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        command_list->ResourceBarrier(1, &render_target_barrier);
 
         // Set up viewport
+        command_list->OMSetRenderTargets(1, &m_rtv_handles[m_frame_index].cpu, FALSE, &m_dsv_handles[m_frame_index].cpu);
         command_list->RSSetViewports(1, &m_viewport); // Set viewport
         command_list->RSSetScissorRects(1, &m_surface_size); // todo: comment
         command_list->ClearRenderTargetView(m_rtv_handles[m_frame_index].cpu, clear_color, 0, nullptr); // Clear the screen
+        command_list->ClearDepthStencilView(m_dsv_handles[m_frame_index].cpu, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr); // Clear the depth buffer
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // We draw triangles
 
         // Loop over each model
@@ -493,13 +569,17 @@ namespace Flan {
             ModelDrawInfo& curr_model_info = m_model_queue[i];
 
             // Create a model matrix for this model
-            glm::mat4 model_matrix = glm::mat4(1.0f);
-            model_matrix = glm::translate(model_matrix, curr_model_info.transform.position);
-            model_matrix = model_matrix * glm::mat4_cast(curr_model_info.transform.rotation);
-            model_matrix = glm::scale(model_matrix, curr_model_info.transform.scale);
+            glm::mat4 model_matrix = curr_model_info.transform.get_matrix();
 
             // Create a constant buffer for the model transform
             auto model_transform_const_buffer = create_const_buffer(sizeof(ModelTransformBuffer), true);
+            memcpy_s(model_transform_const_buffer.buffer_data, model_transform_const_buffer.buffer_size, &model_matrix, sizeof(model_matrix));
+            model_transform_const_buffer.update_data(m_device.Get(), &model_matrix, sizeof(model_matrix));
+
+            // Set root descriptor table
+            auto desc_heap = m_cbv_heap.get_heap();
+            command_list->SetDescriptorHeaps(1, &desc_heap);
+            command_list->SetGraphicsRootDescriptorTable(0, m_cbv_heap.get_gpu_start());
 
             // Get the mesh from the resource manager
             ModelResource* model_resource = m_resource_manager->get_resource<ModelResource>(curr_model_info.model_to_draw);
@@ -511,14 +591,20 @@ namespace Flan {
             command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view); // Bind vertex buffer
             command_list->IASetIndexBuffer(&index_buffer_view); // Bind index buffer
 
-            // Bind the command buffer
-            //command_list->SetGraphicsRootDescriptorTable(0, camera_transform.handle.gpu);
-            //command_list->SetGraphicsRootDescriptorTable(1, model_transform_const_buffer.handle.gpu);
-
             // Submit draw call
             command_list->DrawIndexedInstanced(n_verts, 1, 0, 0, 0);
         }
         m_model_queue_length = 0;
+
+        D3D12_RESOURCE_BARRIER present_barrier;
+        present_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        present_barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        present_barrier.Transition.pResource = m_render_targets[m_frame_index].Get();
+        present_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        present_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+        present_barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        command_list->ResourceBarrier(1, &present_barrier);
+
         m_command.end_frame();
 
         // Update window
@@ -551,8 +637,6 @@ namespace Flan {
 
         // If the current completed fence value is lower than this frame's fence value,
         // we aren't done with this frame yet. We should wait.
-
-        printf("%llu / %llu\n", fence->GetCompletedValue(), fence_value);
 
         //if (fence->GetCompletedValue() < fence_value) {
             // We create an event to trigger when the fence value reaches this frame's fence value

@@ -117,6 +117,13 @@ namespace Flan {
         glm::vec3 position;
         glm::quat rotation;
         glm::vec3 scale;
+        glm::mat4 get_matrix() const {
+            glm::mat4 matrix = glm::mat4(1.0f);
+            matrix = glm::translate(matrix, position);
+            matrix = matrix * glm::mat4_cast(rotation);
+            matrix = glm::scale(matrix, scale);
+            return matrix;
+        }
     };
 
     struct ModelDrawInfo {
@@ -129,6 +136,8 @@ namespace Flan {
         size_t buffer_size;
         DescriptorHandle handle;
         D3D12_CONSTANT_BUFFER_VIEW_DESC view_desc;
+        ID3D12Resource* resource;
+        void update_data(ID3D12Device* device, void* new_data, size_t size);
     };
 
     class RendererHigh
@@ -182,7 +191,12 @@ namespace Flan {
         ID3D12PipelineState* m_pipeline_state_object;
 
         // Camera
-        ConstBuffer m_camera_transform;
+        Transform m_camera_transform{
+            {0, 0, 0},
+            {1, 0, 0, 0},
+            {1, 1, 1}
+        };
+        ConstBuffer m_camera_matrix; // todo: make this a root constant instead of a descriptor table entry
 
         // Draw queues
         ModelDrawInfo* m_model_queue = nullptr;
@@ -191,10 +205,12 @@ namespace Flan {
         // Descriptors
         //D3D12_DESCRIPTOR_RANGE1 cbv_srv_uav_range;
         //D3D12_DESCRIPTOR_RANGE1 sampler_range;
+        D3D12_DESCRIPTOR_RANGE1 m_dsv_range;
         D3D12_DESCRIPTOR_RANGE1 m_rtv_range;
         D3D12_DESCRIPTOR_RANGE1 m_cbv_range;
         //DescriptorHeap cbv_srv_uav_heap;
         //DescriptorHeap sample_heap;
+        DescriptorHeap m_dsv_heap;
         DescriptorHeap m_rtv_heap;
         DescriptorHeap m_cbv_heap;
 
@@ -202,10 +218,12 @@ namespace Flan {
         [[deprecated]] ComPtr<ID3D12DescriptorHeap> m_render_target_view_heap;
         ComPtr<IDXGISwapChain3> m_swapchain = nullptr;
         ComPtr<ID3D12Resource> m_render_targets[m_backbuffer_count];
+        ComPtr<ID3D12Resource> m_depth_targets[m_backbuffer_count];
         [[deprecated]] UINT m_render_target_view_descriptor_size;
         D3D12_VIEWPORT m_viewport;
         D3D12_RECT m_surface_size;
         DescriptorHandle m_rtv_handles[m_backbuffer_count];
+        DescriptorHandle m_dsv_handles[m_backbuffer_count];
 
         // Debug
         std::vector<std::string> m_init_flags;

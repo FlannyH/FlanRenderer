@@ -21,16 +21,16 @@ int main()
 
     // Define where the quad should be
     Flan::Transform quad_transform {
-        {0, 0, 100},
+        {0, 0, -4},
         {1, 0, 0, 0},
         {1, 1, 1},
     };
 
     // Main loop
     while (!renderer.should_close()) {
-        printf("frame\n");
         renderer.begin_frame();
         renderer.draw_model({ quad_handle, quad_transform });
+        quad_transform.rotation *= glm::quat(glm::vec3{ 0, 0.05f, 0 });
         renderer.end_frame();
     }
 
