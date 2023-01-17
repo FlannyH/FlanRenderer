@@ -608,7 +608,7 @@ namespace Flan {
         m_command.end_frame();
 
         // Update window
-        m_swapchain->Present(1, 0);
+        m_swapchain->Present(0, 0);
         m_frame_index = m_swapchain->GetCurrentBackBufferIndex();
 
         // Update GLFW window

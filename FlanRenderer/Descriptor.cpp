@@ -44,7 +44,6 @@ namespace Flan {
 
             slots_used[index] = -1;
             --size;
-            printf("released slot %i from the descriptor heap\n", index);
         }
 
         // Clear the array
