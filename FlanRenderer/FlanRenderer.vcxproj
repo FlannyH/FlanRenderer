@@ -181,6 +181,7 @@ if %errorlevel% leq 7 exit 0 else exit %errorlevel%</Command>
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="Resources.cpp" />
     <ClCompile Include="RootParameter.cpp" />
+    <ClCompile Include="TextureResource.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CommonDefines.h" />
@@ -194,6 +195,7 @@ if %errorlevel% leq 7 exit 0 else exit %errorlevel%</Command>
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Resources.h" />
     <ClInclude Include="RootParameter.h" />
+    <ClInclude Include="TextureResource.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\test.ps.hlsl">

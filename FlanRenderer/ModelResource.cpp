@@ -3,7 +3,13 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
+#define TINYGLTF_NOEXCEPTION
+#define JSON_NOEXCEPTION
 #include <tinygltf/tiny_gltf.h>
+
+#include "TextureResource.h"
+
+
 
 namespace Flan {
     bool ModelResource::load(std::string path, ResourceManager* resource_manager)
@@ -24,7 +30,6 @@ namespace Flan {
         std::string path_to_model_folder = path.substr(0, path.find_last_of('/')) + "/";
 
         //Parse materials
-        /*
         std::vector<MaterialResource> materials_vector;
         {
             for (auto& model_material : model.materials)
@@ -50,16 +55,21 @@ namespace Flan {
                     std::string file_path_from_model = image.uri;
                     std::string path_from_model_folder_to_texture_folder = file_path_from_model.substr(0, file_path_from_model.find_last_of('/')) + "/";
                     std::string file_extension = file_path_from_model.substr(file_path_from_model.find_last_of('.'));
-                    std::string file_name_root = file_path_from_model.substr(file_path_from_model.find_last_of('/') + 1, file_path_from_model.find_last_of('alb.') - file_path_from_model.find_last_of('/') - 4);
+                    std::string file_name_root;
+                    if (file_path_from_model.find_last_of("alb.") != std::string::npos) {
+                        file_name_root = file_path_from_model.substr(file_path_from_model.find_last_of('/') + 1, file_path_from_model.find_last_of("alb.") - file_path_from_model.find_last_of('/') - 4);
+                    } else {
+                        file_name_root = file_path_from_model.substr(file_path_from_model.find_last_of('/') + 1, file_path_from_model.size() - file_path_from_model.find_last_of('/') - 4);
+                    }
                     std::string path_without_extension = path_to_model_folder + path_from_model_folder_to_texture_folder + file_name_root;
 
                     //Create textures - TODO: reassess whether this is scuffed or not
                     ResourceManager::get_allocator_instance()->curr_memory_chunk_label = "MdlRes - TexRes's - " + path;
 
-                    ResourceHandle handle_texture_alb = resource_manager->load_resource_from_disk<TextureResource>(path_without_extension + "alb" + file_extension);
-                    ResourceHandle handle_texture_nrm = resource_manager->load_resource_from_disk<TextureResource>(path_without_extension + "nrm" + file_extension);
-                    ResourceHandle handle_texture_mtl = resource_manager->load_resource_from_disk<TextureResource>(path_without_extension + "mtl" + file_extension);
-                    ResourceHandle handle_texture_rgh = resource_manager->load_resource_from_disk<TextureResource>(path_without_extension + "rgh" + file_extension);
+                    ResourceHandle handle_texture_alb = resource_manager->load_texture(path_without_extension + "alb" + file_extension);
+                    ResourceHandle handle_texture_nrm = resource_manager->load_texture(path_without_extension + "nrm" + file_extension);
+                    ResourceHandle handle_texture_mtl = resource_manager->load_texture(path_without_extension + "mtl" + file_extension);
+                    ResourceHandle handle_texture_rgh = resource_manager->load_texture(path_without_extension + "rgh" + file_extension);
 
                     pbr_material.tex_col = handle_texture_alb;
                     pbr_material.tex_nrm = handle_texture_nrm;
@@ -69,7 +79,6 @@ namespace Flan {
                 materials_vector.push_back(pbr_material);
             }
         }
-        */
 
         //Go through each node and add it to the primitive vector
         std::unordered_map<int, MeshCPU> primitives;
@@ -84,7 +93,7 @@ namespace Flan {
             ResourceManager::get_allocator_instance()->curr_memory_chunk_label = "MdlRes - Mesh - " + path;
             meshes_cpu = (MeshCPU*)dynamic_allocate(sizeof(MeshCPU) * primitives.size());
             ResourceManager::get_allocator_instance()->curr_memory_chunk_label = "MdlRes - Material - " + path;
-            materials = (MaterialResource*)dynamic_allocate(sizeof(MaterialResource) * primitives.size());
+            materials_cpu = (MaterialResource*)dynamic_allocate(sizeof(MaterialResource) * primitives.size());
             n_meshes = 0;
             n_materials = 0;
 
@@ -92,7 +101,7 @@ namespace Flan {
             for (auto& [material_id, mesh] : primitives)
             {
                 meshes_cpu[n_meshes] = mesh;
-                materials[n_materials] = materials[material_id];
+                materials_cpu[n_materials] = materials_vector[material_id];
                 n_meshes += 1;
                 n_materials += 1;
             }

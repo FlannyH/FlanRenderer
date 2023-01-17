@@ -12,7 +12,8 @@ namespace Flan {
         bool scheduled_for_unload;
         MeshCPU* meshes_cpu;
         MeshGPU* meshes_gpu;
-        MaterialResource* materials;
+        MaterialResource* materials_cpu;
+        MaterialGPU* materials_gpu;
         size_t n_meshes;
         size_t n_materials;
         bool load(std::string path, ResourceManager* resource_manager);

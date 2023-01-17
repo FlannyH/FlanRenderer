@@ -167,6 +167,8 @@ namespace Flan {
         void end_frame() override;
         void draw_model(ModelDrawInfo model) override;
         bool should_close() override;
+        TextureGPU upload_texture(const ResourceHandle texture_handle, bool is_srgb, bool unload_resource_afterwards);
+        void upload_mesh(ResourceHandle handle, ResourceManager& resource_manager);;
         ID3D12Device* get_device() const { return m_device.Get(); }
     private:
         void create_hwnd(int width, int height, std::string_view name);
@@ -190,6 +192,7 @@ namespace Flan {
         DynamicAllocator m_renderer_allocator = DynamicAllocator(8 MB);
         ID3D12PipelineState* m_pipeline_state_object;
 
+
         // Camera
         Transform m_camera_transform{
             {0, 0, 0},
@@ -208,11 +211,13 @@ namespace Flan {
         D3D12_DESCRIPTOR_RANGE1 m_dsv_range;
         D3D12_DESCRIPTOR_RANGE1 m_rtv_range;
         D3D12_DESCRIPTOR_RANGE1 m_cbv_range;
+        D3D12_DESCRIPTOR_RANGE1 m_srv_range;
         //DescriptorHeap cbv_srv_uav_heap;
         //DescriptorHeap sample_heap;
         DescriptorHeap m_dsv_heap;
         DescriptorHeap m_rtv_heap;
         DescriptorHeap m_cbv_heap;
+        DescriptorHeap m_srv_heap;
 
         // Swapchain
         [[deprecated]] ComPtr<ID3D12DescriptorHeap> m_render_target_view_heap;

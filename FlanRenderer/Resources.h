@@ -10,6 +10,8 @@
 #include <iostream>
 #include <fstream>
 
+#include "Descriptor.h"
+
 // A descriptor heap keeps track of descriptor handles, and manages allocation and deallocation. 
 
 namespace Flan {
@@ -49,9 +51,31 @@ namespace Flan {
         size_t n_indices;
     };
 
+    struct TextureGPU {
+
+        ID3D12Resource* resource;
+        DescriptorHandle handle;
+    };
+
+    struct MaterialGPU
+    {
+        TextureGPU tex_col;
+        TextureGPU tex_nrm;
+        TextureGPU tex_rgh;
+        TextureGPU tex_mtl;
+        TextureGPU tex_emm;
+        glm::vec4 mul_col;
+        glm::vec3 mul_nrm;
+        float mul_rgh;
+        float mul_mtl;
+        glm::vec3 mul_emm;
+        glm::vec2 mul_tex;
+    };
+
     typedef u64 ResourceHandle;
 
     enum struct ResourceType {
+        Invalid = 0,
         Model,
         Texture,
     };
@@ -61,7 +85,7 @@ namespace Flan {
         ResourceManager();
         ~ResourceManager();
         ResourceHandle load_mesh(const std::string& path);
-        void upload_mesh_to_gpu(ResourceHandle handle, ID3D12Device* device);
+        ResourceHandle load_texture(const std::string& path);
 
         template <typename T> 
         T* get_resource(ResourceHandle handle) {

@@ -2,6 +2,7 @@
 #include "HelperFunctions.h"
 #include "ModelResource.h"
 #include "RootParameter.h"
+#include "TextureResource.h"
 
 namespace Flan {
     Flan::D3D12_Command::D3D12_Command(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE type) {
@@ -393,21 +394,26 @@ namespace Flan {
         m_rtv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
         m_dsv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
         m_cbv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_srv_heap = DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         //cbv_srv_uav_heap.init(device.Get(), 16, true);
         //sample_heap.init(device.Get(), 1, true);
         m_rtv_heap.init(m_device.Get(), m_backbuffer_count, true);
         m_dsv_heap.init(m_device.Get(), m_backbuffer_count, true);
         m_cbv_heap.init(m_device.Get(), 16, true);
+        m_srv_heap.init(m_device.Get(), 16, true);
     }
 
     void Flan::RendererDX12::create_root_signature()
     {
         // Define descriptor ranges
-        DescriptorRange descriptor_range{ D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 16, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE };
+        DescriptorRange descriptor_range[2]{
+            DescriptorRange{ D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 16, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE },
+            DescriptorRange{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 16, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE },
+        };
 
         // Create root parameters
         RootParameter parameters[1];
-        parameters[0].as_descriptor_table(D3D12_SHADER_VISIBILITY_VERTEX, &descriptor_range, 1);
+        parameters[0].as_descriptor_table(D3D12_SHADER_VISIBILITY_ALL, descriptor_range, 2);
 
         // Create root signature
         RootSignatureDesc root_signature_desc{ &parameters[0], _countof(parameters), nullptr, 0, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT };
@@ -576,16 +582,21 @@ namespace Flan {
             memcpy_s(model_transform_const_buffer.buffer_data, model_transform_const_buffer.buffer_size, &model_matrix, sizeof(model_matrix));
             model_transform_const_buffer.update_data(m_device.Get(), &model_matrix, sizeof(model_matrix));
 
-            // Set root descriptor table
-            auto desc_heap = m_cbv_heap.get_heap();
-            command_list->SetDescriptorHeaps(1, &desc_heap);
-            command_list->SetGraphicsRootDescriptorTable(0, m_cbv_heap.get_gpu_start());
-
             // Get the mesh from the resource manager
             ModelResource* model_resource = m_resource_manager->get_resource<ModelResource>(curr_model_info.model_to_draw);
             auto vertex_buffer_view = model_resource->meshes_gpu->vertex_buffer_view;
             auto index_buffer_view = model_resource->meshes_gpu->index_buffer_view;
             auto n_verts = model_resource->meshes_cpu->n_indices;
+
+            // todo: Get the albedo material from the mesh and bind the texture to the shader resource view
+            //TextureGPU& texture = model_resource->materials_gpu->tex_col;
+
+            // Set root descriptor table
+            ID3D12DescriptorHeap* desc_heap[] = {
+                m_cbv_heap.get_heap(),
+            };
+            command_list->SetDescriptorHeaps(_countof(desc_heap), desc_heap);
+            command_list->SetGraphicsRootDescriptorTable(0, m_cbv_heap.get_gpu_start());
 
             // Bind the vertex buffer
             command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view); // Bind vertex buffer
@@ -630,6 +641,159 @@ namespace Flan {
     bool RendererDX12::should_close()
     {
         return glfwWindowShouldClose(window) != 0;
+    }
+
+    TextureGPU RendererDX12::upload_texture(const ResourceHandle texture_handle, bool is_srgb, bool unload_resource_afterwards) {
+        // Get texture resource
+        TextureResource* resource = m_resource_manager->get_resource<TextureResource>(texture_handle);
+        if (resource->resource_type == ResourceType::Invalid) {
+            return TextureGPU{ nullptr, 0 };
+        }
+
+        // Define heap properties
+        D3D12_HEAP_PROPERTIES heap_properties = {};
+        heap_properties.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+        // Define resource description based on the texture resource
+        D3D12_RESOURCE_DESC resource_desc = {};
+        resource_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        resource_desc.Width = resource->width;
+        resource_desc.Height = resource->height;
+        resource_desc.DepthOrArraySize = 1;
+        resource_desc.MipLevels = 1;
+        resource_desc.Format = is_srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+        resource_desc.SampleDesc.Count = 1;
+        resource_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+        // Create a texture resource
+        TextureGPU texture_gpu;
+        m_device->CreateCommittedResource(
+            &heap_properties, 
+            D3D12_HEAP_FLAG_NONE, 
+            &resource_desc, 
+            D3D12_RESOURCE_STATE_COMMON, 
+            nullptr, 
+            IID_PPV_ARGS(&texture_gpu.resource)
+        );
+
+        // Create a Shader Resource View
+        D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
+        srv_desc.Format = resource_desc.Format;
+        srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srv_desc.Texture2D.MipLevels = 1;
+        srv_desc.Texture2D.MostDetailedMip = 0;
+        texture_gpu.handle = m_srv_heap.allocate();
+        m_device->CreateShaderResourceView(texture_gpu.resource, &srv_desc, texture_gpu.handle.cpu);
+
+        // We're done!
+        return texture_gpu;
+    }
+
+    void RendererDX12::upload_mesh(ResourceHandle handle, ResourceManager& resource_manager) {
+        // Get the resource
+        ModelResource* model = resource_manager.get_resource<ModelResource>(handle);
+
+        // Allocate space for GPU mesh data
+        model->meshes_gpu = (MeshGPU*)dynamic_allocate(model->n_meshes * sizeof(MeshGPU));
+        model->materials_gpu = (MaterialGPU*)dynamic_allocate(sizeof(MaterialGPU) * model->n_materials);
+        model->n_meshes = model->n_meshes;
+        model->n_materials = model->n_materials;
+
+        // Set it to 0 (so we actually get nullptr references
+        memset(model->meshes_gpu, 0, model->n_meshes * sizeof(MeshGPU));
+
+        //Parse all materials
+        for (int i = 0; i < model->n_materials; i++)
+        {
+            model->materials_gpu[i].tex_col = upload_texture(model->materials_cpu[i].tex_col, true, true);
+            model->materials_gpu[i].tex_nrm = upload_texture(model->materials_cpu[i].tex_nrm, false, true);
+            model->materials_gpu[i].tex_mtl = upload_texture(model->materials_cpu[i].tex_mtl, false, true);
+            model->materials_gpu[i].tex_rgh = upload_texture(model->materials_cpu[i].tex_rgh, false, true);
+        }
+
+        // For each mesh
+        for (size_t i = 0; i < model->n_meshes; i++) {
+            // Get the resource
+            MeshCPU& mesh_cpu = model->meshes_cpu[i];
+            MeshGPU& mesh_gpu = model->meshes_gpu[i];
+
+            // Only the GPU needs this data, set the range accordingly
+            mesh_gpu.vertex_buffer_range = { 0, 0 };
+            mesh_gpu.index_buffer_range = { 0, 0 };
+
+            // Upload the vertex buffer to the GPU
+            {
+                D3D12_HEAP_PROPERTIES upload_heap_props = {
+                    D3D12_HEAP_TYPE_UPLOAD, // The heap will be used to upload data to the GPU
+                    D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+                    D3D12_MEMORY_POOL_UNKNOWN, 1, 1 };
+
+                D3D12_RESOURCE_DESC upload_buffer_desc = {
+                    D3D12_RESOURCE_DIMENSION_BUFFER, // Can either be texture or buffer, we want a buffer
+                    0,
+                    sizeof(Vertex) * mesh_cpu.n_verts,
+                    1,
+                    1,
+                    1,
+                    DXGI_FORMAT_UNKNOWN, // This is only really useful for textures, so for buffer this is unknown
+                    {1, 0}, // Texture sampling quality settings, not important for non-textures, so set it to lowest
+                    D3D12_TEXTURE_LAYOUT_ROW_MAJOR, // First left to right, then top to bottom
+                    D3D12_RESOURCE_FLAG_NONE,
+                };
+
+                throw_if_failed(m_device->CreateCommittedResource(&upload_heap_props, D3D12_HEAP_FLAG_NONE, &upload_buffer_desc,
+                                                                  D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, __uuidof(ID3D12Resource), (void**)&mesh_gpu.vertex_buffer_resource));
+
+                // Bind the vertex buffer, copy the data to it, then unbind the vertex buffer
+                throw_if_failed(mesh_gpu.vertex_buffer_resource->Map(0, &mesh_gpu.vertex_buffer_range, reinterpret_cast<void**>(&mesh_gpu.vertex_buffer_data)));
+                memcpy_s(mesh_gpu.vertex_buffer_data, sizeof(Vertex) * mesh_cpu.n_verts, mesh_cpu.vertices, sizeof(Vertex) * mesh_cpu.n_verts);
+                mesh_gpu.vertex_buffer_resource->Unmap(0, nullptr);
+
+                // Init the buffer view
+                mesh_gpu.vertex_buffer_view = D3D12_VERTEX_BUFFER_VIEW{
+                    mesh_gpu.vertex_buffer_resource->GetGPUVirtualAddress(),
+                    static_cast<u32>(sizeof(Vertex) * mesh_cpu.n_verts),
+                    sizeof(Vertex),
+                };
+            }
+
+            // Upload the index buffer to the GPU
+            {
+                D3D12_HEAP_PROPERTIES upload_heap_props = {
+                    D3D12_HEAP_TYPE_UPLOAD, // The heap will be used to upload data to the GPU
+                    D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+                    D3D12_MEMORY_POOL_UNKNOWN, 1, 1 };
+
+                D3D12_RESOURCE_DESC upload_buffer_desc = {
+                    D3D12_RESOURCE_DIMENSION_BUFFER, // Can either be texture or buffer, we want a buffer
+                    0,
+                    sizeof(u32) * mesh_cpu.n_indices,
+                    1,
+                    1,
+                    1,
+                    DXGI_FORMAT_UNKNOWN, // This is only really useful for textures, so for buffer this is unknown
+                    {1, 0}, // Texture sampling quality settings, not important for non-textures, so set it to lowest
+                    D3D12_TEXTURE_LAYOUT_ROW_MAJOR, // First left to right, then top to bottom
+                    D3D12_RESOURCE_FLAG_NONE,
+                };
+
+                throw_if_failed(m_device->CreateCommittedResource(&upload_heap_props, D3D12_HEAP_FLAG_NONE, &upload_buffer_desc,
+                                                                  D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, __uuidof(ID3D12Resource), (void**)&mesh_gpu.index_buffer_resource));
+
+                // Bind the index buffer, copy the data to it, then unbind the index buffer
+                throw_if_failed(mesh_gpu.index_buffer_resource->Map(0, &mesh_gpu.index_buffer_range, reinterpret_cast<void**>(&mesh_gpu.index_buffer_data)));
+                memcpy_s(mesh_gpu.index_buffer_data, sizeof(u32) * mesh_cpu.n_indices, mesh_cpu.indices, sizeof(u32) * mesh_cpu.n_indices);
+                mesh_gpu.index_buffer_resource->Unmap(0, nullptr);
+
+                // Init the buffer view
+                mesh_gpu.index_buffer_view = D3D12_INDEX_BUFFER_VIEW{
+                    mesh_gpu.index_buffer_resource->GetGPUVirtualAddress(),
+                    static_cast<u32>(sizeof(u32) * mesh_cpu.n_indices),
+                    DXGI_FORMAT_R32_UINT,
+                };
+            }
+        }
     }
 
     void Flan::D3D12_Command::CommandFrame::wait_fence(HANDLE fence_event, ID3D12Fence1* fence) {
