@@ -499,11 +499,6 @@ namespace Flan {
             throw std::exception("Could not create window!");
         }
 
-        // todo: remove these
-        //m_camera_matrix = create_const_buffer(sizeof(TransformBuffer));
-        //m_model_matrix = create_const_buffer(sizeof(ModelTransformBuffer));
-
-        //
         //D3D12_SAMPLER_DESC samplerDesc = {};
         //samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
         //samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -527,10 +522,10 @@ namespace Flan {
 
         // Update camera constant buffer
         struct {
-
             glm::mat4 view;
             glm::mat4 projection;
         } camera_matrices;
+
         camera_matrices.view = m_camera_transform.get_view_matrix();
         // todo: un-hardcode this
         camera_matrices.projection = glm::perspectiveRH_ZO(glm::radians(90.f), 16.f/9.f, 0.1f, 1000.f);
@@ -551,6 +546,7 @@ namespace Flan {
         // Record raster commands
         constexpr float clear_color[] = { 0.1f, 0.1f, 0.2f, 1.0f };
         auto* command_list = m_command.get_command_list();
+
         // Set backbuffer as render target
         D3D12_RESOURCE_BARRIER render_target_barrier;
         render_target_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
