@@ -50,9 +50,6 @@ namespace Flan {
 
         // Reset the fence event
         ResetEvent(fence_event);
-
-        // todo: write comment and make sense of this, also check if it works without it
-        command_queue->Signal(fence.Get(), fence_value);
     }
 
     void Flan::D3D12_Command::end_frame() {
