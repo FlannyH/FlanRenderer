@@ -92,3 +92,4 @@ The input layout determines the layout of the vertex data. It essentially sets u
 Shaders are written in HLSL, and are loaded as compiled binaries during runtime.
 
 ### Pipeline State Object
+The Pipeline State Object (PSO) is an object that stores the current shader, input layout, a pointer to the Root Signature, the primitive topology type, the current rasterizer state, and information about render targets.

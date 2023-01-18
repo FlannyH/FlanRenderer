@@ -84,18 +84,6 @@ namespace Flan {
         m_hwnd = glfwGetWin32Window(window);
     }
 
-    void Flan::RendererDX12::create_fence() {
-        // Create fences for each backbuffer
-        assert(m_device);
-        HANDLE fence_event = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        ComPtr<ID3D12Fence> fences[m_backbuffer_count];
-        UINT64 fence_values[m_backbuffer_count];
-        for (unsigned i = 0u; i < m_backbuffer_count; ++i) {
-            throw_if_failed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fences[i])));
-            fence_values[i] = 0;
-        }
-    }
-
     void Flan::RendererDX12::create_swapchain(int width, int height) {
         // Define surface size
         m_surface_size.left = 0;
@@ -483,66 +471,6 @@ namespace Flan {
         m_to_be_deallocated[m_frame_index].push_back(data_pointer);
     }
 
-    ConstBuffer Flan::RendererDX12::create_const_buffer(size_t buffer_size, bool temporary)
-    {
-        assert(m_device);
-
-        // Create the const buffer
-        ConstBuffer const_buffer{};
-
-        // Allocate memory for the buffer in CPU space
-        const_buffer.buffer_data = m_renderer_allocator.allocate(buffer_size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-        const_buffer.buffer_size = buffer_size;
-
-        // Get a handle where we can put the constant buffer
-        const_buffer.handle = m_cbv_heap.allocate();
-
-        // If this buffer is temporary, mark it for deallocation, which will free the buffer handle a few frames from now
-        if (temporary) {
-            m_cbv_heap.free_later(const_buffer.handle);
-            free_later(const_buffer.buffer_data);
-        }
-
-        // Define upload properties
-        D3D12_HEAP_PROPERTIES upload_heap_props = {
-            D3D12_HEAP_TYPE_UPLOAD, // The heap will be used to upload data to the GPU
-            D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-            D3D12_MEMORY_POOL_UNKNOWN, 1, 1
-        };
-
-        // Define what we want to upload
-        D3D12_RESOURCE_DESC upload_buffer_desc = {
-            D3D12_RESOURCE_DIMENSION_BUFFER, // Can either be texture or buffer, we want a buffer
-            0,
-            (const_buffer.buffer_size | 0xFF) + 1, // Constant buffers must be 256-byte aligned
-            1,
-            1,
-            1,
-            DXGI_FORMAT_UNKNOWN, // This is only really useful for textures, so for buffer this is unknown
-            {1, 0}, // Texture sampling quality settings, not important for non-textures, so set it to lowest
-            D3D12_TEXTURE_LAYOUT_ROW_MAJOR, // First left to right, then top to bottom
-            D3D12_RESOURCE_FLAG_NONE,
-        };
-
-        // Create a constant buffer resource
-        throw_if_failed(m_device->CreateCommittedResource(
-            &upload_heap_props,
-            D3D12_HEAP_FLAG_NONE,
-            &upload_buffer_desc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            __uuidof(ID3D12Resource),
-            (void**)&const_buffer.resource
-        ));
-
-        // Create a constant buffer description
-        const_buffer.view_desc.BufferLocation = const_buffer.resource->GetGPUVirtualAddress();
-        const_buffer.view_desc.SizeInBytes = (const_buffer.buffer_size | 0xFF) + 1;
-        m_device->CreateConstantBufferView(&const_buffer.view_desc, const_buffer.handle.cpu);
-
-        return const_buffer;
-    }
-
     Shader Flan::RendererDX12::load_shader(const std::string& path)
     {
         Shader shader{};
@@ -572,8 +500,8 @@ namespace Flan {
         }
 
         // todo: remove these
-        m_camera_matrix = create_const_buffer(sizeof(TransformBuffer));
-        m_model_matrix = create_const_buffer(sizeof(ModelTransformBuffer));
+        //m_camera_matrix = create_const_buffer(sizeof(TransformBuffer));
+        //m_model_matrix = create_const_buffer(sizeof(ModelTransformBuffer));
 
         //
         //D3D12_SAMPLER_DESC samplerDesc = {};

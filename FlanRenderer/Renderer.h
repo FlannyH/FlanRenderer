@@ -198,11 +198,9 @@ namespace Flan {
         bool should_close() override;
         TextureGPU upload_texture(const ResourceHandle texture_handle, bool is_srgb, bool unload_resource_afterwards);
         void upload_mesh(ResourceHandle handle, ResourceManager& resource_manager);
-        ID3D12Device* get_device() const { return m_device.Get(); }
         void set_camera_transform(const Transform& transform);
     private:
         void create_hwnd(int width, int height, std::string_view name);
-        void create_fence();
         void create_swapchain(int width, int height);
         void create_factory();
         void create_device();
@@ -211,13 +209,11 @@ namespace Flan {
         void create_descriptor_heaps();
         void create_root_signature();
         void free_later(void* data_pointer);
-        [[nodiscard]] ConstBuffer create_const_buffer(size_t buffer_size, bool temporary = false);
         Shader load_shader(const std::string& path);
         UINT m_frame_index;
         D3D12_Command m_command;
         ComPtr<IDXGIFactory4> m_factory;
         ComPtr<ID3D12Device> m_device = nullptr;
-        ComPtr<ID3D12PipelineState> m_pso = nullptr;
         ComPtr<ID3D12RootSignature> m_root_signature = nullptr;
         DynamicAllocator m_renderer_allocator = DynamicAllocator(8 MB);
         ID3D12PipelineState* m_pipeline_state_object;
@@ -229,33 +225,21 @@ namespace Flan {
             {1, 0, 0, 0},
             {1, 1, 1}
         };
-        ConstBuffer m_camera_matrix;
-        ConstBuffer m_model_matrix;
 
         // Draw queues
         ModelDrawInfo* m_model_queue = nullptr;
         size_t m_model_queue_length = 0;
 
         // Descriptors
-        //D3D12_DESCRIPTOR_RANGE1 cbv_srv_uav_range;
-        //D3D12_DESCRIPTOR_RANGE1 sampler_range;
-        D3D12_DESCRIPTOR_RANGE1 m_dsv_range;
-        D3D12_DESCRIPTOR_RANGE1 m_rtv_range;
-        D3D12_DESCRIPTOR_RANGE1 m_cbv_range;
-        D3D12_DESCRIPTOR_RANGE1 m_srv_range;
-        //DescriptorHeap cbv_srv_uav_heap;
-        //DescriptorHeap sample_heap;
         DescriptorHeap m_dsv_heap;
         DescriptorHeap m_rtv_heap;
         DescriptorHeap m_cbv_heap;
         DescriptorHeap m_srv_heap;
 
         // Swapchain
-        [[deprecated]] ComPtr<ID3D12DescriptorHeap> m_render_target_view_heap;
         ComPtr<IDXGISwapChain3> m_swapchain = nullptr;
         ComPtr<ID3D12Resource> m_render_targets[m_backbuffer_count];
         ComPtr<ID3D12Resource> m_depth_targets[m_backbuffer_count];
-        [[deprecated]] UINT m_render_target_view_descriptor_size;
         D3D12_VIEWPORT m_viewport;
         D3D12_RECT m_surface_size;
         DescriptorHandle m_rtv_handles[m_backbuffer_count];
@@ -264,7 +248,9 @@ namespace Flan {
         // Debug
         std::vector<std::string> m_init_flags;
 
-        [[maybe_unused]] ComPtr<ID3D12Debug1> m_debug_interface;// If we're in release mode, this variable will be unused
+#ifdef _DEBUG
+        ComPtr<ID3D12Debug1> m_debug_interface;// If we're in release mode, this variable will be unused
+#endif
         std::vector<void*> m_to_be_deallocated[m_backbuffer_count]{};
     };
 }
